@@ -23,8 +23,6 @@ TenantTrack/
       BuildingCard.jsx
       DashboardStats.jsx
       StatusLegend.jsx
-    data/
-      sampleProperties.js
     lib/
       supabaseClient.js
     App.jsx

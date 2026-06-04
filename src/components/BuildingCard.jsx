@@ -8,6 +8,7 @@ const paymentLabels = {
 
 const statusLabels = {
   paid: 'Paid',
+  partial: 'Partial Payment',
   upcoming: 'Upcoming',
   overdue: 'Overdue',
   vacant: 'Vacant',
@@ -23,7 +24,7 @@ function StatusDot({ status, label }) {
   );
 }
 
-function BuildingCard({ property }) {
+function BuildingCard({ property, onEditRoom }) {
   return (
     <article className="building-card">
       <div className="building-card__title">{property.name}</div>
@@ -48,7 +49,11 @@ function BuildingCard({ property }) {
               </span>
             ))}
             <span role="cell">
-              <button className="edit-button" aria-label={`Edit ${room.number}`}>
+              <button
+                className="edit-button"
+                aria-label={`Edit ${room.number}`}
+                onClick={() => onEditRoom(room)}
+              >
                 <Edit3 size={10} />
               </button>
             </span>

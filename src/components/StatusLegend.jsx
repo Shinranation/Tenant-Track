@@ -1,5 +1,6 @@
 const legendItems = [
   { label: 'Paid', status: 'paid' },
+  { label: 'Partial', status: 'partial' },
   { label: 'Upcoming', status: 'upcoming' },
   { label: 'Overdue', status: 'overdue' },
   { label: 'Vacant', status: 'vacant' },
