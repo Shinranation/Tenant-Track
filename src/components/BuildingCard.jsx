@@ -1,4 +1,4 @@
-import { Edit3 } from 'lucide-react';
+import { Edit3, StickyNote } from 'lucide-react';
 
 const paymentLabels = {
   rent: 'Rent',
@@ -24,13 +24,14 @@ function StatusDot({ status, label }) {
   );
 }
 
-function BuildingCard({ property, onEditRoom }) {
+function BuildingCard({ hasRoomNote, property, onEditRoom }) {
   return (
     <article className="building-card">
       <div className="building-card__title">{property.name}</div>
 
       <div className="room-table" role="table" aria-label={`${property.name} payment status`}>
         <div className="room-row room-row--head" role="row">
+          <span aria-hidden="true" />
           <span role="columnheader">Unit</span>
           {Object.values(paymentLabels).map((label) => (
             <span key={label} role="columnheader">
@@ -42,6 +43,13 @@ function BuildingCard({ property, onEditRoom }) {
 
         {property.rooms.map((room) => (
           <div className="room-row" role="row" key={room.id}>
+            <span className="room-note-cell" role="cell">
+              {hasRoomNote?.(room.id) && (
+                <span className="room-note-indicator" title={`${room.number} has notes`}>
+                  <StickyNote size={14} />
+                </span>
+              )}
+            </span>
             <span role="cell">{room.number}</span>
             {Object.entries(room.payments).map(([key, status]) => (
               <span role="cell" key={key}>
