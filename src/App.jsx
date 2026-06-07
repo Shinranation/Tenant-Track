@@ -356,6 +356,7 @@ function App() {
   });
   const [session, setSession] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [accessStatus, setAccessStatus] = useState('checking');
   const [properties, setProperties] = useState([]);
   const [portfolioRecords, setPortfolioRecords] = useState(emptyPortfolioRecords);
   const [activePage, setActivePage] = useState('dashboard');
@@ -369,6 +370,7 @@ function App() {
   useEffect(() => {
     if (!supabase) {
       setIsAuthLoading(false);
+      setAccessStatus('denied');
       return undefined;
     }
 
@@ -381,11 +383,50 @@ function App() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
+      setAccessStatus('checking');
       setIsAuthLoading(false);
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function checkAllowedUser() {
+      if (!supabase || !session) {
+        setAccessStatus('denied');
+        return;
+      }
+
+      const email = session.user?.email;
+
+      if (!email) {
+        setAccessStatus('denied');
+        return;
+      }
+
+      setAccessStatus('checking');
+
+      const { data, error } = await supabase
+        .from('allowed_users')
+        .select('email')
+        .ilike('email', email)
+        .maybeSingle();
+
+      if (!isMounted) {
+        return;
+      }
+
+      setAccessStatus(!error && data ? 'allowed' : 'denied');
+    }
+
+    checkAllowedUser();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [session]);
 
   useEffect(() => {
     async function loadDashboard() {
@@ -395,7 +436,7 @@ function App() {
         return;
       }
 
-      if (!session) {
+      if (!session || accessStatus !== 'allowed') {
         setProperties([]);
         setPortfolioRecords(emptyPortfolioRecords);
         setIsLoading(false);
@@ -468,7 +509,7 @@ function App() {
     }
 
     loadDashboard();
-  }, [billingPeriod, session]);
+  }, [accessStatus, billingPeriod, session]);
 
   const rooms = useMemo(() => properties.flatMap((property) => property.rooms), [properties]);
 
@@ -535,6 +576,18 @@ function App() {
 
   if (!session) {
     return <LoginScreen />;
+  }
+
+  if (accessStatus === 'checking') {
+    return (
+      <main className="app-shell">
+        <p className="system-message">Checking approved user...</p>
+      </main>
+    );
+  }
+
+  if (accessStatus === 'denied') {
+    return <AccessDeniedScreen email={session.user?.email} />;
   }
 
   return (
@@ -763,6 +816,25 @@ function LoginScreen() {
           >
             <span className="login-google-mark" aria-hidden="true">G</span>
             {isSubmitting ? 'Opening Google...' : 'Login with Google'}
+          </button>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function AccessDeniedScreen({ email }) {
+  return (
+    <main className="login-shell">
+      <section className="login-window" aria-label="TenantTrack access denied">
+        <div className="login-window__tab">Access Denied</div>
+        <div className="login-content">
+          <p className="login-note">
+            This Google account is signed in, but it is not approved for TenantTrack.
+          </p>
+          {email && <p className="login-message login-message--neutral">{email}</p>}
+          <button className="login-button" type="button" onClick={() => supabase.auth.signOut()}>
+            Logout
           </button>
         </div>
       </section>

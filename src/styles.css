@@ -612,6 +612,11 @@ h2 {
   font-weight: 700;
 }
 
+.login-message--neutral {
+  color: #111111;
+  background: #eeeeee;
+}
+
 .login-button {
   display: inline-flex;
   align-items: center;
