@@ -354,6 +354,8 @@ function App() {
     month: currentDate.getMonth() + 1,
     year: currentDate.getFullYear(),
   });
+  const [session, setSession] = useState(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [properties, setProperties] = useState([]);
   const [portfolioRecords, setPortfolioRecords] = useState(emptyPortfolioRecords);
   const [activePage, setActivePage] = useState('dashboard');
@@ -365,9 +367,37 @@ function App() {
   const [isNotesOpen, setIsNotesOpen] = useState(false);
 
   useEffect(() => {
+    if (!supabase) {
+      setIsAuthLoading(false);
+      return undefined;
+    }
+
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setIsAuthLoading(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setIsAuthLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
     async function loadDashboard() {
       if (!supabase) {
         setErrorMessage('Add your Supabase URL and anon key to .env to load property data.');
+        setIsLoading(false);
+        return;
+      }
+
+      if (!session) {
+        setProperties([]);
+        setPortfolioRecords(emptyPortfolioRecords);
         setIsLoading(false);
         return;
       }
@@ -438,7 +468,7 @@ function App() {
     }
 
     loadDashboard();
-  }, [billingPeriod]);
+  }, [billingPeriod, session]);
 
   const rooms = useMemo(() => properties.flatMap((property) => property.rooms), [properties]);
 
@@ -495,6 +525,18 @@ function App() {
     }));
   }
 
+  if (isAuthLoading) {
+    return (
+      <main className="app-shell">
+        <p className="system-message">Checking login...</p>
+      </main>
+    );
+  }
+
+  if (!session) {
+    return <LoginScreen />;
+  }
+
   return (
     <main className="app-shell">
       <header className="top-bar">
@@ -510,8 +552,8 @@ function App() {
             {activePage === 'summary' ? 'Dashboard' : 'Summary'}
           </button>
         </div>
-        <button className="icon-button" aria-label="Close dashboard">
-          <X size={16} />
+        <button className="logout-button" type="button" onClick={() => supabase.auth.signOut()}>
+          Logout
         </button>
       </header>
 
@@ -672,6 +714,59 @@ function MonthlyNotesPanel({
         </div>
       )}
     </section>
+  );
+}
+
+function LoginScreen() {
+  const [authMessage, setAuthMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function handleGoogleLogin() {
+    if (!supabase) {
+      setAuthMessage('Add Supabase environment variables before logging in.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setAuthMessage('');
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+        queryParams: {
+          prompt: 'select_account',
+        },
+      },
+    });
+
+    if (error) {
+      setAuthMessage(error.message);
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <main className="login-shell">
+      <section className="login-window" aria-label="TenantTrack login">
+        <div className="login-window__tab">TenantTrack Login</div>
+        <div className="login-content">
+          <p className="login-note">Use your allowed Google account to open TenantTrack.</p>
+
+          {authMessage && <p className="login-message">{authMessage}</p>}
+
+          <button
+            className="login-button login-button--google"
+            type="button"
+            disabled={isSubmitting}
+            onClick={handleGoogleLogin}
+          >
+            <span className="login-google-mark" aria-hidden="true">G</span>
+            {isSubmitting ? 'Opening Google...' : 'Login with Google'}
+          </button>
+        </div>
+      </section>
+    </main>
   );
 }
 
