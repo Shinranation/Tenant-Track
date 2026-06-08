@@ -14,6 +14,31 @@ const statusLabels = {
   vacant: 'Vacant',
 };
 
+function getRoomDisplayOrder(room) {
+  const paymentStatuses = Object.values(room.payments ?? {});
+  const hasActivePayments = paymentStatuses.some((status) => status !== 'vacant');
+
+  if (room.status === 'occupied' || room.tenant || room.contractId || hasActivePayments) {
+    return 0;
+  }
+
+  if (room.status === 'unavailable') {
+    return 2;
+  }
+
+  return 1;
+}
+
+function sortRoomsForDisplay(roomA, roomB) {
+  return (
+    getRoomDisplayOrder(roomA) - getRoomDisplayOrder(roomB) ||
+    roomA.number.localeCompare(roomB.number, undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    })
+  );
+}
+
 function StatusDot({ status, label }) {
   return (
     <span
@@ -25,6 +50,8 @@ function StatusDot({ status, label }) {
 }
 
 function BuildingCard({ hasRoomNote, property, onEditRoom }) {
+  const sortedRooms = [...property.rooms].sort(sortRoomsForDisplay);
+
   return (
     <article className="building-card">
       <div className="building-card__title">{property.name}</div>
@@ -41,7 +68,7 @@ function BuildingCard({ hasRoomNote, property, onEditRoom }) {
           <span role="columnheader">Edit</span>
         </div>
 
-        {property.rooms.map((room) => (
+        {sortedRooms.map((room) => (
           <div className="room-row" role="row" key={room.id}>
             <span className="room-note-cell" role="cell">
               {hasRoomNote?.(room.id) && (
