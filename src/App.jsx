@@ -248,8 +248,11 @@ const moneyFields = [
   ['Lights Amount', 'lightAmount'],
   ['Lights Paid', 'lightPaid'],
 ];
-const removePaidConfirmation = moneyChangeConfirmation;
+const resetPaidConfirmation = moneyChangeConfirmation;
+const purgePaymentConfirmation = 'purge payment';
 const paymentHistoryTable = 'payment_history_logs';
+const paymentStatusFallback = 'upcoming';
+const paymentStatusValues = new Set(['paid', 'partial', 'upcoming', 'overdue']);
 const paymentTypes = [
   {
     key: 'rent',
@@ -272,6 +275,21 @@ const paymentTypes = [
     utilityType: 'electricity',
   },
 ];
+
+function normalizePaymentStatus(status) {
+  return paymentStatusValues.has(status) ? status : paymentStatusFallback;
+}
+
+function normalizeConfirmation(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function matchesConfirmation(value, confirmation) {
+  return normalizeConfirmation(value) === normalizeConfirmation(confirmation);
+}
 
 function loadMonthlyNotes() {
   if (typeof window === 'undefined') {
@@ -369,6 +387,29 @@ function normalizeAmount(value) {
   return Number.isFinite(amount) ? amount : 0;
 }
 
+function parsePaymentAmount(value) {
+  if (value == null || String(value).trim() === '') {
+    return null;
+  }
+
+  const amount = Number(value);
+
+  return Number.isFinite(amount) ? amount : null;
+}
+
+function isValidPartialAmount(partialAmount, amountDue) {
+  const parsedPartialAmount = parsePaymentAmount(partialAmount);
+  const requiredAmount = normalizeAmount(amountDue);
+
+  return parsedPartialAmount != null && parsedPartialAmount > 0 && parsedPartialAmount < requiredAmount;
+}
+
+function hasRequiredPaymentAmount(amount) {
+  const requiredAmount = parsePaymentAmount(amount);
+
+  return requiredAmount != null && requiredAmount > 0;
+}
+
 function getMoneyChanges(room, formData) {
   return moneyFields
     .map(([label, key]) => {
@@ -390,8 +431,10 @@ function getMoneyChanges(room, formData) {
 function hasPaymentHistoryChange(room, formData, paymentType) {
   const previousPaid = normalizeAmount(room[`${paymentType.key}Paid`]);
   const nextPaid = normalizeAmount(formData[`${paymentType.key}Paid`]);
-  const previousStatus = room[`${paymentType.key}Status`] ?? room.payments[paymentType.key] ?? 'upcoming';
-  const nextStatus = formData[`${paymentType.key}Status`] ?? 'upcoming';
+  const previousStatus = normalizePaymentStatus(
+    room[`${paymentType.key}Status`] ?? room.payments[paymentType.key],
+  );
+  const nextStatus = normalizePaymentStatus(formData[`${paymentType.key}Status`]);
 
   return previousPaid !== nextPaid || previousStatus !== nextStatus;
 }
@@ -410,14 +453,72 @@ function buildPaymentHistoryRows({ room, formData, userEmail, activeContractId }
       billing_year: room.billingYear,
       old_amount_paid: normalizeAmount(room[`${paymentType.key}Paid`]),
       new_amount_paid: normalizeAmount(formData[`${paymentType.key}Paid`]),
-      old_status: room[`${paymentType.key}Status`] ?? room.payments[paymentType.key] ?? 'upcoming',
-      new_status: formData[`${paymentType.key}Status`] ?? 'upcoming',
+      old_status: normalizePaymentStatus(
+        room[`${paymentType.key}Status`] ?? room.payments[paymentType.key],
+      ),
+      new_status: normalizePaymentStatus(formData[`${paymentType.key}Status`]),
       changed_by: userEmail ?? 'Unknown user',
     }));
 }
 
 function getPaymentTypeLabel(paymentType) {
   return paymentTypes.find((type) => type.key === paymentType)?.label ?? paymentType;
+}
+
+function getPendingPurgeLabels(pendingPaymentPurges) {
+  return paymentTypes
+    .filter((paymentType) => pendingPaymentPurges[paymentType.key])
+    .map((paymentType) => paymentType.label);
+}
+
+function buildUpdateNotice({
+  room,
+  moneyChanges,
+  paymentHistoryRows,
+  pendingPaymentPurges,
+  didRefresh,
+  historySaveFailed,
+}) {
+  const summary = [];
+  const purgeLabels = getPendingPurgeLabels(pendingPaymentPurges);
+
+  if (purgeLabels.length > 0) {
+    summary.push(`Purged ${purgeLabels.join(', ')} payment record${purgeLabels.length === 1 ? '' : 's'}.`);
+  }
+
+  if (paymentHistoryRows.length > 0) {
+    summary.push(
+      `Updated ${paymentHistoryRows
+        .map((historyRow) => getPaymentTypeLabel(historyRow.payment_type))
+        .join(', ')} payment status or paid amount.`,
+    );
+  }
+
+  if (moneyChanges.length > 0) {
+    summary.push(
+      `Changed ${moneyChanges.map((change) => change.label).join(', ')}.`,
+    );
+  }
+
+  if (summary.length === 0) {
+    summary.push('Room details saved.');
+  }
+
+  summary.push(
+    didRefresh === false
+      ? 'Saved, but the dashboard could not refresh automatically.'
+      : 'Dashboard updated.',
+  );
+
+  if (historySaveFailed) {
+    summary.push('Payment history still needs setup.');
+  }
+
+  return {
+    title: 'Update Saved',
+    subtitle: `${room.buildingName} - ${room.number}`,
+    summary,
+  };
 }
 
 function getPaymentHistoryErrorMessage(error) {
@@ -569,6 +670,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [editingRoom, setEditingRoom] = useState(null);
+  const [updateNotice, setUpdateNotice] = useState(null);
   const [monthlyNotes, setMonthlyNotes] = useState(loadMonthlyNotes);
   const [isNotesOpen, setIsNotesOpen] = useState(false);
 
@@ -926,8 +1028,16 @@ function App() {
           room={editingRoom}
           onClose={() => setEditingRoom(null)}
           onSaved={loadDashboard}
+          onUpdateNotice={(notice) => {
+            setEditingRoom(null);
+            setUpdateNotice(notice);
+          }}
           userEmail={session.user?.email}
         />
+      )}
+
+      {updateNotice && (
+        <UpdateNoticeDialog notice={updateNotice} onClose={() => setUpdateNotice(null)} />
       )}
 
       <footer>Designed and Created by: Jayrad P. Adeva</footer>
@@ -1280,12 +1390,39 @@ function StatusSelectLine({ value, isEditing, onChange }) {
   );
 }
 
-function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
+function UpdateNoticeDialog({ notice, onClose }) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="notice-window" role="dialog" aria-modal="true" aria-labelledby="update-notice-title">
+        <div className="notice-window__tab">Update Complete</div>
+        <div className="notice-window__body">
+          <h2 id="update-notice-title">{notice.title}</h2>
+          <p className="notice-window__subtitle">{notice.subtitle}</p>
+          <ul>
+            {notice.summary.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+          <button className="window-update-button" type="button" onClick={onClose}>
+            OK
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function EditRoomWindow({ room, onClose, onSaved, onUpdateNotice, userEmail }) {
   const [saveMessage, setSaveMessage] = useState('');
   const [historyMessage, setHistoryMessage] = useState('');
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [moneyConfirmation, setMoneyConfirmation] = useState('');
   const [paymentAction, setPaymentAction] = useState(null);
+  const [pendingPaymentPurges, setPendingPaymentPurges] = useState({
+    rent: false,
+    water: false,
+    light: false,
+  });
   const [isDetailsEditing, setIsDetailsEditing] = useState(false);
   const [editablePayments, setEditablePayments] = useState({
     rent: false,
@@ -1299,22 +1436,21 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
     contractEnds: room.contractEnds ?? '',
     rentAmount: room.rentAmount ?? '',
     rentPaid: room.rentPaid ?? '',
-    rentStatus: room.rentStatus ?? room.payments.rent,
+    rentStatus: normalizePaymentStatus(room.rentStatus ?? room.payments.rent),
     rentDueDate: room.rentDueDate ?? '',
     waterAmount: room.waterAmount ?? '',
     waterPaid: room.waterPaid ?? '',
-    waterStatus: room.waterStatus ?? room.payments.water,
+    waterStatus: normalizePaymentStatus(room.waterStatus ?? room.payments.water),
     waterDueDate: room.waterDueDate ?? '',
     lightAmount: room.lightAmount ?? '',
     lightPaid: room.lightPaid ?? '',
-    lightStatus: room.lightStatus ?? room.payments.light,
+    lightStatus: normalizePaymentStatus(room.lightStatus ?? room.payments.light),
     lightDueDate: room.lightDueDate ?? '',
   });
   const missingUtilityAmounts = getMissingUtilityAmounts(formData);
   const moneyChanges = getMoneyChanges(room, formData);
   const hasMoneyChanges = moneyChanges.length > 0;
-  const hasMoneyConfirmation =
-    moneyConfirmation.trim().toLowerCase() === moneyChangeConfirmation.toLowerCase();
+  const hasMoneyConfirmation = matchesConfirmation(moneyConfirmation, moneyChangeConfirmation);
 
   useEffect(() => {
     let isMounted = true;
@@ -1379,6 +1515,10 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
   }
 
   function handleFullyPaid(paymentKey) {
+    setPendingPaymentPurges((current) => ({
+      ...current,
+      [paymentKey]: false,
+    }));
     setFormData((current) => ({
       ...current,
       [`${paymentKey}Paid`]: current[`${paymentKey}Amount`] || 0,
@@ -1388,6 +1528,17 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
   }
 
   function handlePartialPayment(paymentKey, amount) {
+    const amountDue = formData[`${paymentKey}Amount`];
+
+    if (!isValidPartialAmount(amount, amountDue)) {
+      setSaveMessage('Partial payment must be greater than 0 and below the required amount.');
+      return;
+    }
+
+    setPendingPaymentPurges((current) => ({
+      ...current,
+      [paymentKey]: false,
+    }));
     setFormData((current) => ({
       ...current,
       [`${paymentKey}Paid`]: amount,
@@ -1396,12 +1547,30 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
     setPaymentAction(null);
   }
 
-  function handleRemovePaid(paymentKey) {
+  function handleResetPaid(paymentKey) {
+    setPendingPaymentPurges((current) => ({
+      ...current,
+      [paymentKey]: false,
+    }));
     setFormData((current) => ({
       ...current,
       [`${paymentKey}Paid`]: 0,
       [`${paymentKey}Status`]: 'upcoming',
     }));
+    setPaymentAction(null);
+  }
+
+  function handlePurgePayment(paymentKey) {
+    setPendingPaymentPurges((current) => ({
+      ...current,
+      [paymentKey]: true,
+    }));
+    setFormData((current) => ({
+      ...current,
+      [`${paymentKey}Paid`]: 0,
+      [`${paymentKey}Status`]: 'upcoming',
+    }));
+    setSaveMessage(`${getPaymentTypeLabel(paymentKey)} payment marked for purge. Click Update to save.`);
     setPaymentAction(null);
   }
 
@@ -1508,7 +1677,9 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
     });
     const requests = [];
 
-    if (room.rentPaymentId) {
+    if (pendingPaymentPurges.rent && room.rentPaymentId) {
+      requests.push(supabase.from('rent_payments').delete().eq('id', room.rentPaymentId));
+    } else if (room.rentPaymentId) {
       requests.push(
         supabase
           .from('rent_payments')
@@ -1516,25 +1687,31 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
             amount_due: formData.rentAmount || null,
             amount_paid: formData.rentPaid || 0,
             due_date: formData.rentDueDate || null,
-            status: formData.rentStatus,
+            status: normalizePaymentStatus(formData.rentStatus),
           })
           .eq('id', room.rentPaymentId),
       );
-    } else if (activeContractId && (formData.rentAmount || formData.rentDueDate)) {
+    } else if (
+      !pendingPaymentPurges.rent &&
+      activeContractId &&
+      (formData.rentAmount || formData.rentDueDate)
+    ) {
       requests.push(
-        supabase.from('rent_payments').insert({
+        supabase.from('rent_payments').upsert({
           contract_id: activeContractId,
           billing_month: room.billingMonth,
           billing_year: room.billingYear,
           amount_due: formData.rentAmount || null,
           amount_paid: formData.rentPaid || 0,
           due_date: formData.rentDueDate || null,
-          status: formData.rentStatus,
-        }),
+          status: normalizePaymentStatus(formData.rentStatus),
+        }, { onConflict: 'contract_id,billing_month,billing_year' }),
       );
     }
 
-    if (room.waterPaymentId) {
+    if (pendingPaymentPurges.water && room.waterPaymentId) {
+      requests.push(supabase.from('utility_payments').delete().eq('id', room.waterPaymentId));
+    } else if (room.waterPaymentId) {
       requests.push(
         supabase
           .from('utility_payments')
@@ -1542,13 +1719,17 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
             amount_due: formData.waterAmount || null,
             amount_paid: formData.waterPaid || 0,
             due_date: formData.waterDueDate || null,
-            status: formData.waterStatus,
+            status: normalizePaymentStatus(formData.waterStatus),
           })
           .eq('id', room.waterPaymentId),
       );
-    } else if (activeContractId && (formData.waterAmount || formData.waterDueDate)) {
+    } else if (
+      !pendingPaymentPurges.water &&
+      activeContractId &&
+      (formData.waterAmount || formData.waterDueDate)
+    ) {
       requests.push(
-        supabase.from('utility_payments').insert({
+        supabase.from('utility_payments').upsert({
           contract_id: activeContractId,
           utility_type: 'water',
           billing_month: room.billingMonth,
@@ -1556,12 +1737,14 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
           amount_due: formData.waterAmount || null,
           amount_paid: formData.waterPaid || 0,
           due_date: formData.waterDueDate || null,
-          status: formData.waterStatus,
-        }),
+          status: normalizePaymentStatus(formData.waterStatus),
+        }, { onConflict: 'contract_id,utility_type,billing_month,billing_year' }),
       );
     }
 
-    if (room.lightPaymentId) {
+    if (pendingPaymentPurges.light && room.lightPaymentId) {
+      requests.push(supabase.from('utility_payments').delete().eq('id', room.lightPaymentId));
+    } else if (room.lightPaymentId) {
       requests.push(
         supabase
           .from('utility_payments')
@@ -1569,13 +1752,17 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
             amount_due: formData.lightAmount || null,
             amount_paid: formData.lightPaid || 0,
             due_date: formData.lightDueDate || null,
-            status: formData.lightStatus,
+            status: normalizePaymentStatus(formData.lightStatus),
           })
           .eq('id', room.lightPaymentId),
       );
-    } else if (activeContractId && (formData.lightAmount || formData.lightDueDate)) {
+    } else if (
+      !pendingPaymentPurges.light &&
+      activeContractId &&
+      (formData.lightAmount || formData.lightDueDate)
+    ) {
       requests.push(
-        supabase.from('utility_payments').insert({
+        supabase.from('utility_payments').upsert({
           contract_id: activeContractId,
           utility_type: 'electricity',
           billing_month: room.billingMonth,
@@ -1583,8 +1770,8 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
           amount_due: formData.lightAmount || null,
           amount_paid: formData.lightPaid || 0,
           due_date: formData.lightDueDate || null,
-          status: formData.lightStatus,
-        }),
+          status: normalizePaymentStatus(formData.lightStatus),
+        }, { onConflict: 'contract_id,utility_type,billing_month,billing_year' }),
       );
     }
 
@@ -1623,10 +1810,15 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
 
     const didRefresh = await onSaved?.();
 
-    setSaveMessage(
-      didRefresh === false
-        ? 'Saved, but the dashboard could not refresh automatically.'
-        : `Saved. Dashboard updated.${historySaveFailed ? ' History table needs setup.' : ''}`,
+    onUpdateNotice?.(
+      buildUpdateNotice({
+        room,
+        moneyChanges,
+        paymentHistoryRows,
+        pendingPaymentPurges,
+        didRefresh,
+        historySaveFailed,
+      }),
     );
   }
 
@@ -1701,6 +1893,7 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
               amountValue={formData.rentAmount}
               dueName="rentDueDate"
               dueValue={formData.rentDueDate}
+              hasSavedPayment={Boolean(room.rentPaymentId)}
               isEditing={editablePayments.rent}
               onChange={handleChange}
               onStatusClick={setPaymentAction}
@@ -1715,6 +1908,7 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
               amountValue={formData.waterAmount}
               dueName="waterDueDate"
               dueValue={formData.waterDueDate}
+              hasSavedPayment={Boolean(room.waterPaymentId)}
               isEditing={editablePayments.water}
               onChange={handleChange}
               onStatusClick={setPaymentAction}
@@ -1729,6 +1923,7 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
               amountValue={formData.lightAmount}
               dueName="lightDueDate"
               dueValue={formData.lightDueDate}
+              hasSavedPayment={Boolean(room.lightPaymentId)}
               isEditing={editablePayments.light}
               onChange={handleChange}
               onStatusClick={setPaymentAction}
@@ -1780,7 +1975,8 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
             amountDue={formData[`${paymentAction.paymentKey}Amount`]}
             onFullyPaid={() => handleFullyPaid(paymentAction.paymentKey)}
             onPartialPayment={(amount) => handlePartialPayment(paymentAction.paymentKey, amount)}
-            onRemovePaid={() => handleRemovePaid(paymentAction.paymentKey)}
+            onPurgePayment={() => handlePurgePayment(paymentAction.paymentKey)}
+            onResetPaid={() => handleResetPaid(paymentAction.paymentKey)}
             onClose={() => setPaymentAction(null)}
           />
         )}
@@ -1866,11 +2062,17 @@ function PaymentBlock({
   amountValue,
   dueName,
   dueValue,
+  hasSavedPayment,
   isEditing,
   onChange,
   onStatusClick,
   onToggleEdit,
 }) {
+  const canOpenStatusAction = hasRequiredPaymentAmount(amountValue) || hasSavedPayment;
+  const statusTitle = canOpenStatusAction
+    ? `${title}: ${status}`
+    : `${title}: set amount before updating status`;
+
   return (
     <section className={`payment-block${isEditing ? ' payment-block--editing' : ''}`}>
       <div>
@@ -1894,9 +2096,10 @@ function PaymentBlock({
       <button
         className={`payment-status status-dot status-${status}`}
         type="button"
-        title={`${title}: ${status}`}
-        aria-label={`Update ${title} payment status`}
-        onClick={() => onStatusClick({ title, paymentKey })}
+        title={statusTitle}
+        aria-label={statusTitle}
+        disabled={!canOpenStatusAction}
+        onClick={() => canOpenStatusAction && onStatusClick({ title, paymentKey })}
       />
       <button
         className={`payment-edit-check${isEditing ? ' payment-edit-check--active' : ''}`}
@@ -1914,13 +2117,24 @@ function PaymentActionPanel({
   amountDue,
   onFullyPaid,
   onPartialPayment,
-  onRemovePaid,
+  onPurgePayment,
+  onResetPaid,
   onClose,
 }) {
   const [partialAmount, setPartialAmount] = useState('');
-  const [removeConfirmation, setRemoveConfirmation] = useState('');
-  const canRemovePaid =
-    removeConfirmation.trim().toLowerCase() === removePaidConfirmation;
+  const [resetConfirmation, setResetConfirmation] = useState('');
+  const [purgeConfirmation, setPurgeConfirmation] = useState('');
+  const requiredAmount = normalizeAmount(amountDue);
+  const partialPaymentAmount = parsePaymentAmount(partialAmount);
+  const hasPartialInput = partialPaymentAmount != null;
+  const canSavePartial = isValidPartialAmount(partialAmount, amountDue);
+  const partialMax = requiredAmount > 0 ? Math.max(requiredAmount - 0.01, 0) : undefined;
+  const partialMessage =
+    hasPartialInput && !canSavePartial
+      ? `Enter more than 0 and less than ${formatMoney(requiredAmount)}.`
+      : '';
+  const canResetPaid = matchesConfirmation(resetConfirmation, resetPaidConfirmation);
+  const canPurgePayment = matchesConfirmation(purgeConfirmation, purgePaymentConfirmation);
 
   return (
     <section className="status-popout" aria-label={`${payment.title} payment action`}>
@@ -1938,36 +2152,58 @@ function PaymentActionPanel({
           <input
             type="number"
             min="0"
-            max={amountDue || undefined}
+            max={partialMax}
+            step="0.01"
             value={partialAmount}
             placeholder="Amount"
             onChange={(event) => setPartialAmount(event.target.value)}
           />
+          {partialMessage && <small>{partialMessage}</small>}
         </label>
         <button
           className="status-action-button"
           type="button"
+          disabled={!canSavePartial}
           onClick={() => onPartialPayment(partialAmount)}
         >
           Save Partial
         </button>
         <div className="remove-paid-box">
           <label className="partial-payment-field">
-            <span>Remove Paid Authorization</span>
+            <span>Reset Paid Authorization</span>
             <input
               type="text"
-              value={removeConfirmation}
-              placeholder={removePaidConfirmation}
-              onChange={(event) => setRemoveConfirmation(event.target.value)}
+              value={resetConfirmation}
+              placeholder={resetPaidConfirmation}
+              onChange={(event) => setResetConfirmation(event.target.value)}
             />
           </label>
           <button
             className="status-action-button status-action-button--danger"
             type="button"
-            disabled={!canRemovePaid}
-            onClick={onRemovePaid}
+            disabled={!canResetPaid}
+            onClick={onResetPaid}
           >
-            Remove Paid
+            Reset Paid
+          </button>
+        </div>
+        <div className="remove-paid-box remove-paid-box--purge">
+          <label className="partial-payment-field">
+            <span>Full Purge Authorization</span>
+            <input
+              type="text"
+              value={purgeConfirmation}
+              placeholder={purgePaymentConfirmation}
+              onChange={(event) => setPurgeConfirmation(event.target.value)}
+            />
+          </label>
+          <button
+            className="status-action-button status-action-button--danger"
+            type="button"
+            disabled={!canPurgePayment}
+            onClick={onPurgePayment}
+          >
+            Purge Payment
           </button>
         </div>
       </div>

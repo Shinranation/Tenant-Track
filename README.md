@@ -1,18 +1,38 @@
 # TenantTrack
 
-TenantTrack is a web-based property management and rent monitoring system for landlords who manage multiple buildings, rooms, and tenants. It gives property owners one centralized place to view rent, water, and electricity payment statuses with color-coded indicators, making it easier to spot paid, upcoming, and overdue accounts.
+TenantTrack is a web-based property management and rent monitoring dashboard for landlords managing multiple buildings, rooms, tenants, and monthly payments.
 
-The app is planned to store tenant profiles, lease contracts, due dates, payment history, and occupancy records. Compared with spreadsheet-based tracking, TenantTrack is designed to be faster, clearer, and easier to maintain as rental operations grow.
+The app provides a compact Windows-inspired dashboard for scanning rent, water, and electricity status by room. It also includes tenant/contract editing, payment updates, payment history logs, monthly notes, income summary receipts, receipt printing, and PDF export through the browser print flow.
 
 ## Tech Stack
 
-- React
-- Vite
-- Supabase
+| Area | Technology |
+| --- | --- |
+| Frontend | React 18 |
+| Build tool | Vite 5 |
+| Styling | Plain CSS in `src/styles.css` |
+| Backend/database | Supabase Postgres |
+| Auth | Supabase Auth with Google OAuth |
+| Icons | `lucide-react` |
+| Linting | ESLint 9 |
 
-## UI Direction
+Main runtime dependencies:
 
-The starter dashboard follows the provided TenantTrack mockup: a blue title bar, gray workspace, compact building panels, and color-coded payment dots for fast room scanning.
+- `react`
+- `react-dom`
+- `@supabase/supabase-js`
+- `lucide-react`
+
+## Features
+
+- Google login with an `allowed_users` access list.
+- Building and room dashboard with occupancy and payment indicators.
+- Month selector for viewing payment status by billing period.
+- Room edit modal for tenant details, rent, utility amounts, due dates, and payment status.
+- Payment history log for changes to rent, water, and lights.
+- Monthly notes for buildings and rooms. These are currently stored in browser `localStorage`.
+- Income Summary Receipt view with month/year totals.
+- Print receipt and Export PDF actions.
 
 ## Project Structure
 
@@ -29,35 +49,133 @@ TenantTrack/
     main.jsx
     styles.css
   .env.example
+  payment_history_logs.sql
   index.html
   package.json
+  README.md
 ```
 
-## Getting Started
+## Requirements
+
+- Node.js 18 or newer.
+- npm.
+- A Supabase project.
+- A Google OAuth provider configured in Supabase Auth.
+
+## Local Setup
+
+1. Install dependencies.
 
 ```bash
 npm install
-npm run dev
 ```
 
-Create a `.env` file using `.env.example` when you are ready to connect Supabase.
+2. Create a local environment file.
 
-## Supabase Setup
-
-1. Create a new Supabase project.
-2. Open the Supabase SQL Editor.
-3. Run the schema below.
-4. Add your project URL and anon key to `.env`.
-
-If the app shows `Payment history setup needed`, run `payment_history_logs.sql` in the Supabase SQL Editor.
-5. Restart the Vite dev server.
+Copy `.env.example` to `.env.local` or `.env`, then fill in your Supabase values:
 
 ```env
 VITE_SUPABASE_URL=your-supabase-project-url
 VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
 
-### Database Schema
+3. Create and configure a Supabase project.
+
+In Supabase, create a project and copy the Project URL and anon public key from:
+
+```text
+Project Settings -> API
+```
+
+4. Configure Google login in Supabase.
+
+In Supabase, enable Google as an Auth provider:
+
+```text
+Authentication -> Providers -> Google
+```
+
+Add local and production redirect URLs in Supabase:
+
+```text
+http://localhost:5173
+http://127.0.0.1:5173
+your-production-url
+```
+
+5. Run the database schema.
+
+Open the Supabase SQL Editor and run the schema in the `Database Schema` section below.
+
+6. Add your allowed login email.
+
+After creating the `allowed_users` table, insert each Google account that can use TenantTrack:
+
+```sql
+INSERT INTO public.allowed_users (email)
+VALUES ('your-email@example.com');
+```
+
+7. Run the payment history helper if needed.
+
+The repository includes `payment_history_logs.sql`. Run it in the Supabase SQL Editor if the app shows a payment history setup warning.
+
+8. Start the dev server.
+
+```bash
+npm run dev
+```
+
+The app runs at:
+
+```text
+http://localhost:5173
+```
+
+## Available Scripts
+
+```bash
+npm run dev
+```
+
+Starts the Vite development server.
+
+```bash
+npm run build
+```
+
+Creates a production build in `dist/`.
+
+```bash
+npm run preview
+```
+
+Serves the production build locally.
+
+```bash
+npm run lint
+```
+
+Runs ESLint.
+
+## Supabase Setup Notes
+
+TenantTrack reads from and writes to these tables:
+
+- `buildings`
+- `rooms`
+- `tenants`
+- `lease_contracts`
+- `rent_payments`
+- `utility_payments`
+- `allowed_users`
+- `payment_history_logs`
+
+The app currently keeps monthly notes in browser `localStorage` using the key `tenanttrack.monthlyNotes.v1`. A `monthly_notes` table is included in the schema as a future database-backed notes target, but the current UI does not read from or write to that table.
+
+For development, the policies below are intentionally broad. Before production, replace them with policies scoped to authenticated landlord accounts.
+
+## Database Schema
 
 ```sql
 CREATE TABLE public.buildings (
@@ -119,7 +237,8 @@ CREATE TABLE public.rent_payments (
     status = ANY (ARRAY['paid'::text, 'upcoming'::text, 'overdue'::text, 'partial'::text])
   ),
   CONSTRAINT rent_payments_pkey PRIMARY KEY (id),
-  CONSTRAINT rent_payments_contract_id_fkey FOREIGN KEY (contract_id) REFERENCES public.lease_contracts(id)
+  CONSTRAINT rent_payments_contract_id_fkey FOREIGN KEY (contract_id) REFERENCES public.lease_contracts(id),
+  CONSTRAINT unique_rent_billing UNIQUE (contract_id, billing_month, billing_year)
 );
 
 CREATE TABLE public.utility_payments (
@@ -138,7 +257,13 @@ CREATE TABLE public.utility_payments (
   billing_month integer,
   billing_year integer,
   CONSTRAINT utility_payments_pkey PRIMARY KEY (id),
-  CONSTRAINT utility_payments_contract_id_fkey FOREIGN KEY (contract_id) REFERENCES public.lease_contracts(id)
+  CONSTRAINT utility_payments_contract_id_fkey FOREIGN KEY (contract_id) REFERENCES public.lease_contracts(id),
+  CONSTRAINT unique_utility_billing UNIQUE (
+    contract_id,
+    utility_type,
+    billing_month,
+    billing_year
+  )
 );
 
 CREATE TABLE public.monthly_notes (
@@ -185,9 +310,9 @@ CREATE TABLE public.payment_history_logs (
 );
 ```
 
-### Development Policies
+## Development RLS Policies
 
-For local development, enable read access for the frontend anon key:
+Enable RLS:
 
 ```sql
 ALTER TABLE public.buildings ENABLE ROW LEVEL SECURITY;
@@ -199,111 +324,198 @@ ALTER TABLE public.utility_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.monthly_notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.allowed_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payment_history_logs ENABLE ROW LEVEL SECURITY;
+```
 
-CREATE POLICY "Allow anon read buildings"
+Read policies:
+
+```sql
+CREATE POLICY "Allow read buildings"
 ON public.buildings FOR SELECT
-TO anon
+TO anon, authenticated
 USING (true);
 
-CREATE POLICY "Allow anon read rooms"
+CREATE POLICY "Allow read rooms"
 ON public.rooms FOR SELECT
-TO anon
+TO anon, authenticated
 USING (true);
 
-CREATE POLICY "Allow anon read tenants"
+CREATE POLICY "Allow read tenants"
 ON public.tenants FOR SELECT
-TO anon
+TO anon, authenticated
 USING (true);
 
-CREATE POLICY "Allow anon read lease contracts"
+CREATE POLICY "Allow read lease contracts"
 ON public.lease_contracts FOR SELECT
-TO anon
+TO anon, authenticated
 USING (true);
 
-CREATE POLICY "Allow anon read rent payments"
+CREATE POLICY "Allow read rent payments"
 ON public.rent_payments FOR SELECT
-TO anon
+TO anon, authenticated
 USING (true);
 
-CREATE POLICY "Allow anon read utility payments"
+CREATE POLICY "Allow read utility payments"
 ON public.utility_payments FOR SELECT
-TO anon
+TO anon, authenticated
 USING (true);
 
-CREATE POLICY "Allow anon read monthly notes"
+CREATE POLICY "Allow read monthly notes"
 ON public.monthly_notes FOR SELECT
 TO anon, authenticated
 USING (true);
 
-CREATE POLICY "Allow anon read allowed users"
+CREATE POLICY "Allow read allowed users"
 ON public.allowed_users FOR SELECT
 TO anon, authenticated
 USING (true);
 
-CREATE POLICY "Allow anon read payment history logs"
+CREATE POLICY "Allow read payment history logs"
 ON public.payment_history_logs FOR SELECT
 TO anon, authenticated
 USING (true);
 ```
 
-The room pop-out can update and insert payment data. During development, add write policies only if you are comfortable allowing the anon key to edit data:
+Write policies for development:
 
 ```sql
-CREATE POLICY "Allow anon update rooms"
+CREATE POLICY "Allow update rooms"
 ON public.rooms FOR UPDATE
-TO anon
+TO anon, authenticated
 USING (true)
 WITH CHECK (true);
 
-CREATE POLICY "Allow anon update tenants"
+CREATE POLICY "Allow update tenants"
 ON public.tenants FOR UPDATE
-TO anon
+TO anon, authenticated
 USING (true)
 WITH CHECK (true);
 
-CREATE POLICY "Allow anon update lease contracts"
+CREATE POLICY "Allow insert tenants"
+ON public.tenants FOR INSERT
+TO anon, authenticated
+WITH CHECK (true);
+
+CREATE POLICY "Allow update lease contracts"
 ON public.lease_contracts FOR UPDATE
-TO anon
+TO anon, authenticated
 USING (true)
 WITH CHECK (true);
 
-CREATE POLICY "Allow anon update rent payments"
+CREATE POLICY "Allow insert lease contracts"
+ON public.lease_contracts FOR INSERT
+TO anon, authenticated
+WITH CHECK (true);
+
+CREATE POLICY "Allow update rent payments"
 ON public.rent_payments FOR UPDATE
-TO anon
+TO anon, authenticated
 USING (true)
 WITH CHECK (true);
 
-CREATE POLICY "Allow anon insert rent payments"
+CREATE POLICY "Allow insert rent payments"
 ON public.rent_payments FOR INSERT
-TO anon
+TO anon, authenticated
 WITH CHECK (true);
 
-CREATE POLICY "Allow anon update utility payments"
+CREATE POLICY "Allow delete rent payments"
+ON public.rent_payments FOR DELETE
+TO anon, authenticated
+USING (true);
+
+CREATE POLICY "Allow update utility payments"
 ON public.utility_payments FOR UPDATE
-TO anon
+TO anon, authenticated
 USING (true)
 WITH CHECK (true);
 
-CREATE POLICY "Allow anon insert utility payments"
+CREATE POLICY "Allow insert utility payments"
 ON public.utility_payments FOR INSERT
-TO anon
+TO anon, authenticated
 WITH CHECK (true);
 
-CREATE POLICY "Allow anon insert monthly notes"
+CREATE POLICY "Allow delete utility payments"
+ON public.utility_payments FOR DELETE
+TO anon, authenticated
+USING (true);
+
+CREATE POLICY "Allow insert monthly notes"
 ON public.monthly_notes FOR INSERT
 TO anon, authenticated
 WITH CHECK (true);
 
-CREATE POLICY "Allow anon update monthly notes"
+CREATE POLICY "Allow update monthly notes"
 ON public.monthly_notes FOR UPDATE
 TO anon, authenticated
 USING (true)
 WITH CHECK (true);
 
-CREATE POLICY "Allow anon insert payment history logs"
+CREATE POLICY "Allow insert payment history logs"
 ON public.payment_history_logs FOR INSERT
 TO anon, authenticated
 WITH CHECK (true);
 ```
 
-For production, replace these broad development policies with authenticated user policies tied to landlord accounts.
+## Seed Data Example
+
+Use this as a minimal smoke test after creating the schema:
+
+```sql
+INSERT INTO public.buildings (name, address)
+VALUES ('Sample Building', '123 Demo Street')
+RETURNING id;
+```
+
+Then create rooms using the returned building id:
+
+```sql
+INSERT INTO public.rooms (building_id, room_name, monthly_rent, status)
+VALUES
+  ('replace-with-building-id', '101', 5500, 'available'),
+  ('replace-with-building-id', '102', 6000, 'available');
+```
+
+## Receipt Print and PDF Export
+
+The Summary page has two receipt actions:
+
+- `Print` opens the browser print dialog.
+- `Export PDF` opens the same print dialog with a PDF-friendly document title. Choose `Save as PDF` as the destination.
+
+The receipt print layout is controlled by the `@media print` rules in `src/styles.css`.
+
+## Deployment Notes
+
+1. Build the app with `npm run build`.
+2. Deploy the generated `dist/` folder to a static host.
+3. Add the production URL to Supabase Auth redirect URLs.
+4. Configure production environment variables:
+
+```env
+VITE_SUPABASE_URL=your-supabase-project-url
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+```
+
+5. Replace broad development RLS policies with production policies tied to authenticated landlord accounts.
+
+## Troubleshooting
+
+If the app says Supabase environment variables are missing, confirm `.env.local` or `.env` exists and restart `npm run dev`.
+
+If login succeeds but access is denied, add the signed-in Google email to `public.allowed_users`.
+
+If payment history shows a setup warning, run `payment_history_logs.sql` in the Supabase SQL Editor.
+
+If saving a rent payment fails with `violates check constraint "rent_status_check"`, update the Supabase check constraint so it allows the app's payment statuses:
+
+```sql
+ALTER TABLE public.rent_payments
+DROP CONSTRAINT IF EXISTS rent_status_check;
+
+ALTER TABLE public.rent_payments
+ADD CONSTRAINT rent_status_check
+CHECK (status = ANY (ARRAY['paid'::text, 'upcoming'::text, 'overdue'::text, 'partial'::text]));
+```
+
+Apply the same idea to `utility_payments` if your utility status constraint has a different allowed list.
+
+If the receipt PDF does not download directly, use the browser print dialog and select `Save as PDF`.
