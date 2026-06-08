@@ -91,6 +91,31 @@ function getPaymentStatus(activeContract, payments, utilityType) {
   return filteredPayments[0]?.status ?? 'upcoming';
 }
 
+function getRoomDisplayOrder(room) {
+  const paymentStatuses = Object.values(room.payments ?? {});
+  const hasActivePayments = paymentStatuses.some((status) => status !== 'vacant');
+
+  if (room.status === 'occupied' || room.tenant || room.contractId || hasActivePayments) {
+    return 0;
+  }
+
+  if (room.status === 'unavailable') {
+    return 2;
+  }
+
+  return 1;
+}
+
+function sortRoomsForDisplay(roomA, roomB) {
+  return (
+    getRoomDisplayOrder(roomA) - getRoomDisplayOrder(roomB) ||
+    roomA.number.localeCompare(roomB.number, undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    })
+  );
+}
+
 function buildProperties({
   buildings,
   rooms,
@@ -180,7 +205,8 @@ function buildProperties({
             water: getPaymentStatus(activeContract, latestWaterPayment ? [latestWaterPayment] : []),
           },
         };
-      }),
+      })
+      .sort(sortRoomsForDisplay),
   }));
 }
 
