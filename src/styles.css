@@ -821,6 +821,59 @@ h2 {
   overflow-x: auto;
 }
 
+.receipt-building {
+  margin-bottom: 22px;
+  border: 2px solid #111111;
+  background: #ffffff;
+}
+
+.receipt-building:last-of-type {
+  margin-bottom: 14px;
+}
+
+.receipt-building__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border-bottom: 2px solid #111111;
+  background: #eeeeee;
+}
+
+.receipt-building__header h3 {
+  margin: 0 0 3px;
+  font-size: 1.1rem;
+  line-height: 1.15;
+}
+
+.receipt-building__header p {
+  margin: 0;
+  color: #333333;
+  font-size: 0.84rem;
+}
+
+.receipt-building__total {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  min-width: 140px;
+  font-weight: 700;
+}
+
+.receipt-building__total span,
+.receipt-grand-total span {
+  color: #333333;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.receipt-building__total strong,
+.receipt-grand-total strong {
+  font-size: 1.12rem;
+  line-height: 1;
+}
+
 .receipt-table {
   width: 100%;
   border-collapse: collapse;
@@ -840,8 +893,8 @@ h2 {
   background: var(--windows-blue);
 }
 
-.receipt-table td:nth-child(n + 4):nth-child(-n + 7),
-.receipt-table th:nth-child(n + 4):nth-child(-n + 7) {
+.receipt-table td:nth-child(n + 3):nth-child(-n + 6),
+.receipt-table th:nth-child(n + 3):nth-child(-n + 6) {
   text-align: right;
 }
 
@@ -855,6 +908,22 @@ h2 {
   border-top: 3px double #111111;
   background: #d9d9d9;
   font-weight: 700;
+}
+
+.receipt-grand-total {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 18px;
+  padding: 14px 16px;
+  border: 3px double #111111;
+  background: #d9d9d9;
+  font-weight: 700;
+}
+
+.receipt-grand-total strong {
+  color: var(--windows-blue);
+  font-size: 1.45rem;
 }
 
 .monthly-notes__toggle {
@@ -991,6 +1060,8 @@ h2 {
 .edit-window {
   position: relative;
   width: min(100%, 560px);
+  max-height: calc(100vh - 42px);
+  overflow-y: auto;
   padding: 38px 18px 16px;
   border: 4px solid #111111;
   border-radius: 0;
@@ -1346,6 +1417,72 @@ h2 {
   color: #7d0000;
 }
 
+.payment-history {
+  margin-bottom: 8px;
+  border: 2px solid #111111;
+  background: #d9d9d9;
+}
+
+.payment-history__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 2px solid #111111;
+  color: #111111;
+  font-size: 0.8rem;
+}
+
+.payment-history__head span:first-child {
+  font-weight: 700;
+}
+
+.payment-history__message {
+  margin: 0;
+  padding: 8px 10px;
+  color: #333333;
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.payment-history__list {
+  display: grid;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.payment-history__item {
+  display: grid;
+  gap: 3px;
+  padding: 7px 10px;
+  border-bottom: 1px solid #777777;
+  background: #eeeeee;
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.payment-history__item:last-child {
+  border-bottom: 0;
+}
+
+.payment-history__item div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.payment-history__item span,
+.payment-history__item small {
+  color: #333333;
+}
+
+.payment-history__item p {
+  margin: 0;
+  font-weight: 700;
+}
+
 .save-message {
   margin: 0 0 6px;
   color: #111111;
@@ -1436,6 +1573,15 @@ h2 {
   cursor: pointer;
 }
 
+.status-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.status-action-button--danger {
+  background: #ffd6d6;
+}
+
 .partial-payment-field {
   display: grid;
   gap: 4px;
@@ -1447,6 +1593,14 @@ h2 {
   width: 100%;
   min-width: 0;
   padding: 2px 6px;
+}
+
+.remove-paid-box {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 2px solid #111111;
 }
 
 footer {
@@ -1569,6 +1723,15 @@ footer {
     flex-direction: column;
   }
 
+  .receipt-building__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .receipt-building__total {
+    justify-items: start;
+  }
+
   .receipt-total-box {
     min-width: 0;
   }
@@ -1641,6 +1804,16 @@ footer {
 
   .receipt-table {
     font-size: 10pt;
+  }
+
+  .receipt-building {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .receipt-building__header,
+  .receipt-grand-total {
+    background: #ffffff;
   }
 
   .receipt-table th {

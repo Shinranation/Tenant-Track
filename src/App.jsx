@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Ban,
@@ -238,6 +238,30 @@ const emptyPortfolioRecords = {
   rentPayments: [],
   utilityPayments: [],
 };
+const removePaidConfirmation = 'yes im sure';
+const paymentHistoryTable = 'payment_history_logs';
+const paymentTypes = [
+  {
+    key: 'rent',
+    label: 'Rent',
+    paymentIdKey: 'rentPaymentId',
+    paymentTable: 'rent_payments',
+  },
+  {
+    key: 'water',
+    label: 'Water',
+    paymentIdKey: 'waterPaymentId',
+    paymentTable: 'utility_payments',
+    utilityType: 'water',
+  },
+  {
+    key: 'light',
+    label: 'Lights',
+    paymentIdKey: 'lightPaymentId',
+    paymentTable: 'utility_payments',
+    utilityType: 'electricity',
+  },
+];
 
 function loadMonthlyNotes() {
   if (typeof window === 'undefined') {
@@ -306,6 +330,91 @@ function formatMoney(amount) {
   }).format(amount);
 }
 
+function formatHistoryDate(value) {
+  if (!value) {
+    return '';
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
+function normalizeAmount(value) {
+  const amount = Number(value);
+
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+function hasPaymentHistoryChange(room, formData, paymentType) {
+  const previousPaid = normalizeAmount(room[`${paymentType.key}Paid`]);
+  const nextPaid = normalizeAmount(formData[`${paymentType.key}Paid`]);
+  const previousStatus = room[`${paymentType.key}Status`] ?? room.payments[paymentType.key] ?? 'upcoming';
+  const nextStatus = formData[`${paymentType.key}Status`] ?? 'upcoming';
+
+  return previousPaid !== nextPaid || previousStatus !== nextStatus;
+}
+
+function buildPaymentHistoryRows({ room, formData, userEmail, activeContractId }) {
+  return paymentTypes
+    .filter((paymentType) => hasPaymentHistoryChange(room, formData, paymentType))
+    .map((paymentType) => ({
+      room_id: room.id,
+      contract_id: activeContractId,
+      payment_table: paymentType.paymentTable,
+      payment_id: room[paymentType.paymentIdKey],
+      payment_type: paymentType.key,
+      utility_type: paymentType.utilityType ?? null,
+      billing_month: room.billingMonth,
+      billing_year: room.billingYear,
+      old_amount_paid: normalizeAmount(room[`${paymentType.key}Paid`]),
+      new_amount_paid: normalizeAmount(formData[`${paymentType.key}Paid`]),
+      old_status: room[`${paymentType.key}Status`] ?? room.payments[paymentType.key] ?? 'upcoming',
+      new_status: formData[`${paymentType.key}Status`] ?? 'upcoming',
+      changed_by: userEmail ?? 'Unknown user',
+    }));
+}
+
+function getPaymentTypeLabel(paymentType) {
+  return paymentTypes.find((type) => type.key === paymentType)?.label ?? paymentType;
+}
+
+function getPaymentHistoryErrorMessage(error) {
+  if (error?.code === '42P01') {
+    return 'Payment history table missing. Run payment_history_logs.sql in Supabase.';
+  }
+
+  if (
+    error?.code === '42501' ||
+    error?.message?.toLowerCase().includes('row-level security') ||
+    error?.message?.toLowerCase().includes('permission denied')
+  ) {
+    return 'Payment history access blocked. Run the payment_history_logs.sql policies in Supabase.';
+  }
+
+  return 'Payment history setup needed. Run payment_history_logs.sql in Supabase.';
+}
+
+function getPaymentHistorySaveErrorMessage(error) {
+  if (error?.code === '42P01') {
+    return 'Payment saved, but the history table is missing. Run payment_history_logs.sql in Supabase.';
+  }
+
+  if (
+    error?.code === '42501' ||
+    error?.message?.toLowerCase().includes('row-level security') ||
+    error?.message?.toLowerCase().includes('permission denied')
+  ) {
+    return 'Payment saved, but history access is blocked. Run the payment_history_logs.sql policies in Supabase.';
+  }
+
+  return 'Payment saved, but history setup is still needed. Run payment_history_logs.sql in Supabase.';
+}
+
 function getSummaryNoteText(notes, billingPeriod, summaryPeriod, buildingId, roomId) {
   const monthRange =
     summaryPeriod === 'year'
@@ -366,7 +475,9 @@ function buildSummaryRows(portfolioRecords, billingPeriod, summaryPeriod, notes)
 
     return {
       id: room.id,
+      buildingId: building?.id ?? 'unassigned',
       buildingName: building?.name ?? 'Unassigned',
+      buildingAddress: building?.address ?? '',
       roomName: room.room_name,
       tenantName,
       rentPaid,
@@ -376,6 +487,33 @@ function buildSummaryRows(portfolioRecords, billingPeriod, summaryPeriod, notes)
       notes: getSummaryNoteText(notes, billingPeriod, summaryPeriod, building?.id, room.id),
     };
   });
+}
+
+function groupRowsByBuilding(rows) {
+  const groups = new Map();
+
+  rows.forEach((row) => {
+    const groupId = row.buildingId ?? row.buildingName;
+    const currentGroup = groups.get(groupId) ?? {
+      id: groupId,
+      name: row.buildingName,
+      address: row.buildingAddress,
+      rows: [],
+      rentPaid: 0,
+      waterPaid: 0,
+      lightPaid: 0,
+      totalPaid: 0,
+    };
+
+    currentGroup.rows.push(row);
+    currentGroup.rentPaid += row.rentPaid;
+    currentGroup.waterPaid += row.waterPaid;
+    currentGroup.lightPaid += row.lightPaid;
+    currentGroup.totalPaid += row.totalPaid;
+    groups.set(groupId, currentGroup);
+  });
+
+  return Array.from(groups.values());
 }
 
 function App() {
@@ -396,6 +534,86 @@ function App() {
   const [editingRoom, setEditingRoom] = useState(null);
   const [monthlyNotes, setMonthlyNotes] = useState(loadMonthlyNotes);
   const [isNotesOpen, setIsNotesOpen] = useState(false);
+
+  const loadDashboard = useCallback(async () => {
+    if (!supabase) {
+      setErrorMessage('Add your Supabase URL and anon key to .env to load property data.');
+      setIsLoading(false);
+      return false;
+    }
+
+    if (!session || accessStatus !== 'allowed') {
+      setProperties([]);
+      setPortfolioRecords(emptyPortfolioRecords);
+      setIsLoading(false);
+      return false;
+    }
+
+    setIsLoading(true);
+    setErrorMessage('');
+
+    const [
+      buildingsResult,
+      roomsResult,
+      tenantsResult,
+      contractsResult,
+      rentPaymentsResult,
+      utilityPaymentsResult,
+    ] = await Promise.all([
+      supabase.from('buildings').select('id, name, address').order('created_at'),
+      supabase
+        .from('rooms')
+        .select('id, building_id, room_name, monthly_rent, status')
+        .order('created_at'),
+      supabase.from('tenants').select('id, full_name'),
+      supabase
+        .from('lease_contracts')
+        .select('id, tenant_id, room_id, start_date, end_date, due_day, status, tenants(full_name)'),
+      supabase
+        .from('rent_payments')
+        .select(
+          'id, contract_id, billing_month, billing_year, amount_due, amount_paid, due_date, status',
+        ),
+      supabase
+        .from('utility_payments')
+        .select(
+          'id, contract_id, utility_type, billing_month, billing_year, amount_due, amount_paid, due_date, status',
+        ),
+    ]);
+
+    const requestError =
+      buildingsResult.error ||
+      roomsResult.error ||
+      tenantsResult.error ||
+      contractsResult.error ||
+      rentPaymentsResult.error ||
+      utilityPaymentsResult.error;
+
+    if (requestError) {
+      setErrorMessage(requestError.message);
+      setIsLoading(false);
+      return false;
+    }
+
+    const records = {
+      buildings: buildingsResult.data ?? [],
+      rooms: roomsResult.data ?? [],
+      tenants: tenantsResult.data ?? [],
+      contracts: contractsResult.data ?? [],
+      rentPayments: rentPaymentsResult.data ?? [],
+      utilityPayments: utilityPaymentsResult.data ?? [],
+    };
+
+    setPortfolioRecords(records);
+    setProperties(
+      buildProperties({
+        ...records,
+        billingPeriod,
+      }),
+    );
+    setIsLoading(false);
+    return true;
+  }, [accessStatus, billingPeriod, session]);
 
   useEffect(() => {
     if (!supabase) {
@@ -459,87 +677,8 @@ function App() {
   }, [session]);
 
   useEffect(() => {
-    async function loadDashboard() {
-      if (!supabase) {
-        setErrorMessage('Add your Supabase URL and anon key to .env to load property data.');
-        setIsLoading(false);
-        return;
-      }
-
-      if (!session || accessStatus !== 'allowed') {
-        setProperties([]);
-        setPortfolioRecords(emptyPortfolioRecords);
-        setIsLoading(false);
-        return;
-      }
-
-      setIsLoading(true);
-      setErrorMessage('');
-
-      const [
-        buildingsResult,
-        roomsResult,
-        tenantsResult,
-        contractsResult,
-        rentPaymentsResult,
-        utilityPaymentsResult,
-      ] = await Promise.all([
-        supabase.from('buildings').select('id, name, address').order('created_at'),
-        supabase
-          .from('rooms')
-          .select('id, building_id, room_name, monthly_rent, status')
-          .order('created_at'),
-        supabase.from('tenants').select('id, full_name'),
-        supabase
-          .from('lease_contracts')
-          .select('id, tenant_id, room_id, start_date, end_date, due_day, status, tenants(full_name)'),
-        supabase
-          .from('rent_payments')
-          .select(
-            'id, contract_id, billing_month, billing_year, amount_due, amount_paid, due_date, status',
-          ),
-        supabase
-          .from('utility_payments')
-          .select(
-            'id, contract_id, utility_type, billing_month, billing_year, amount_due, amount_paid, due_date, status',
-          ),
-      ]);
-
-      const requestError =
-        buildingsResult.error ||
-        roomsResult.error ||
-        tenantsResult.error ||
-        contractsResult.error ||
-        rentPaymentsResult.error ||
-        utilityPaymentsResult.error;
-
-      if (requestError) {
-        setErrorMessage(requestError.message);
-        setIsLoading(false);
-        return;
-      }
-
-      const records = {
-        buildings: buildingsResult.data ?? [],
-        rooms: roomsResult.data ?? [],
-        tenants: tenantsResult.data ?? [],
-        contracts: contractsResult.data ?? [],
-        rentPayments: rentPaymentsResult.data ?? [],
-        utilityPayments: utilityPaymentsResult.data ?? [],
-      };
-
-      setPortfolioRecords(records);
-      setProperties(
-        buildProperties({
-          ...records,
-          billingPeriod,
-        }),
-      );
-      setIsLoading(false);
-    }
-
     loadDashboard();
-  }, [accessStatus, billingPeriod, session]);
+  }, [loadDashboard]);
 
   const rooms = useMemo(() => properties.flatMap((property) => property.rooms), [properties]);
 
@@ -723,7 +862,14 @@ function App() {
         />
       )}
 
-      {editingRoom && <EditRoomWindow room={editingRoom} onClose={() => setEditingRoom(null)} />}
+      {editingRoom && (
+        <EditRoomWindow
+          room={editingRoom}
+          onClose={() => setEditingRoom(null)}
+          onSaved={loadDashboard}
+          userEmail={session.user?.email}
+        />
+      )}
 
       <footer>Designed and Created by: Jayrad P. Adeva</footer>
     </main>
@@ -882,6 +1028,7 @@ function SummaryPage({
   onSummaryPeriodChange,
 }) {
   const receiptTotal = rows.reduce((total, row) => total + row.totalPaid, 0);
+  const buildingGroups = groupRowsByBuilding(rows);
   const periodLabel =
     summaryPeriod === 'year'
       ? `${billingPeriod.year}`
@@ -963,41 +1110,62 @@ function SummaryPage({
           <p className="system-message">Loading summary data...</p>
         ) : (
           <div className="receipt-table-wrap">
-            <table className="receipt-table">
-              <thead>
-                <tr>
-                  <th>Building</th>
-                  <th>Room</th>
-                  <th>Tenant</th>
-                  <th>Rent</th>
-                  <th>Water</th>
-                  <th>Lights</th>
-                  <th>Total</th>
-                  <th>Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id}>
-                    <td>{row.buildingName}</td>
-                    <td>{row.roomName}</td>
-                    <td>{row.tenantName}</td>
-                    <td>{formatMoney(row.rentPaid)}</td>
-                    <td>{formatMoney(row.waterPaid)}</td>
-                    <td>{formatMoney(row.lightPaid)}</td>
-                    <td>{formatMoney(row.totalPaid)}</td>
-                    <td className="receipt-note-cell">{row.notes || ' '}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan="6">Grand Total</td>
-                  <td>{formatMoney(receiptTotal)}</td>
-                  <td />
-                </tr>
-              </tfoot>
-            </table>
+            {buildingGroups.map((buildingGroup) => (
+              <section className="receipt-building" key={buildingGroup.id}>
+                <header className="receipt-building__header">
+                  <div>
+                    <h3>{buildingGroup.name}</h3>
+                    {buildingGroup.address && <p>{buildingGroup.address}</p>}
+                  </div>
+                  <div className="receipt-building__total">
+                    <span>Building Total</span>
+                    <strong>{formatMoney(buildingGroup.totalPaid)}</strong>
+                  </div>
+                </header>
+
+                <table className="receipt-table">
+                  <thead>
+                    <tr>
+                      <th>Room</th>
+                      <th>Tenant</th>
+                      <th>Rent</th>
+                      <th>Water</th>
+                      <th>Lights</th>
+                      <th>Total</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {buildingGroup.rows.map((row) => (
+                      <tr key={row.id}>
+                        <td>{row.roomName}</td>
+                        <td>{row.tenantName}</td>
+                        <td>{formatMoney(row.rentPaid)}</td>
+                        <td>{formatMoney(row.waterPaid)}</td>
+                        <td>{formatMoney(row.lightPaid)}</td>
+                        <td>{formatMoney(row.totalPaid)}</td>
+                        <td className="receipt-note-cell">{row.notes || ' '}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan="2">Subtotal</td>
+                      <td>{formatMoney(buildingGroup.rentPaid)}</td>
+                      <td>{formatMoney(buildingGroup.waterPaid)}</td>
+                      <td>{formatMoney(buildingGroup.lightPaid)}</td>
+                      <td>{formatMoney(buildingGroup.totalPaid)}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              </section>
+            ))}
+
+            <div className="receipt-grand-total">
+              <span>Grand Total</span>
+              <strong>{formatMoney(receiptTotal)}</strong>
+            </div>
           </div>
         )}
       </article>
@@ -1036,8 +1204,10 @@ function StatusSelectLine({ value, isEditing, onChange }) {
   );
 }
 
-function EditRoomWindow({ room, onClose }) {
+function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
   const [saveMessage, setSaveMessage] = useState('');
+  const [historyMessage, setHistoryMessage] = useState('');
+  const [paymentHistory, setPaymentHistory] = useState([]);
   const [paymentAction, setPaymentAction] = useState(null);
   const [isDetailsEditing, setIsDetailsEditing] = useState(false);
   const [editablePayments, setEditablePayments] = useState({
@@ -1064,6 +1234,46 @@ function EditRoomWindow({ room, onClose }) {
     lightDueDate: room.lightDueDate ?? '',
   });
   const missingUtilityAmounts = getMissingUtilityAmounts(formData);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadPaymentHistory() {
+      if (!supabase) {
+        return;
+      }
+
+      setHistoryMessage('Loading history...');
+
+      const { data, error } = await supabase
+        .from(paymentHistoryTable)
+        .select(
+          'id, created_at, payment_type, old_amount_paid, new_amount_paid, old_status, new_status, changed_by',
+        )
+        .eq('room_id', room.id)
+        .order('created_at', { ascending: false })
+        .limit(8);
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (error) {
+        setPaymentHistory([]);
+        setHistoryMessage(getPaymentHistoryErrorMessage(error));
+        return;
+      }
+
+      setPaymentHistory(data ?? []);
+      setHistoryMessage('');
+    }
+
+    loadPaymentHistory();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [room.id]);
 
   function handleChange(event) {
     const { name, value } = event.target;
@@ -1101,6 +1311,15 @@ function EditRoomWindow({ room, onClose }) {
       ...current,
       [`${paymentKey}Paid`]: amount,
       [`${paymentKey}Status`]: 'partial',
+    }));
+    setPaymentAction(null);
+  }
+
+  function handleRemovePaid(paymentKey) {
+    setFormData((current) => ({
+      ...current,
+      [`${paymentKey}Paid`]: 0,
+      [`${paymentKey}Status`]: 'upcoming',
     }));
     setPaymentAction(null);
   }
@@ -1195,6 +1414,12 @@ function EditRoomWindow({ room, onClose }) {
       return;
     }
 
+    const paymentHistoryRows = buildPaymentHistoryRows({
+      room,
+      formData,
+      userEmail,
+      activeContractId,
+    });
     const requests = [];
 
     if (room.rentPaymentId) {
@@ -1285,7 +1510,38 @@ function EditRoomWindow({ room, onClose }) {
       return;
     }
 
-    setSaveMessage('Saved. Refresh the page to view updated dashboard totals.');
+    let historySaveFailed = false;
+
+    if (paymentHistoryRows.length > 0) {
+      const { error: historyError } = await supabase
+        .from(paymentHistoryTable)
+        .insert(paymentHistoryRows);
+
+      if (historyError) {
+        historySaveFailed = true;
+        setHistoryMessage(getPaymentHistorySaveErrorMessage(historyError));
+      } else {
+        setPaymentHistory((current) => [
+          ...paymentHistoryRows.map((historyRow) => ({
+            ...historyRow,
+            id: `${historyRow.payment_type}-${Date.now()}`,
+            created_at: new Date().toISOString(),
+          })),
+          ...current,
+        ].slice(0, 8));
+        setHistoryMessage('');
+      }
+    }
+
+    setSaveMessage('Saved. Updating dashboard...');
+
+    const didRefresh = await onSaved?.();
+
+    setSaveMessage(
+      didRefresh === false
+        ? 'Saved, but the dashboard could not refresh automatically.'
+        : `Saved. Dashboard updated.${historySaveFailed ? ' History table needs setup.' : ''}`,
+    );
   }
 
   return (
@@ -1410,6 +1666,8 @@ function EditRoomWindow({ room, onClose }) {
             <DetailLine label="Paid" name="paid" value={getTotalPaid(formData)} isEditing={false} />
           </fieldset>
 
+          <PaymentHistoryLog history={paymentHistory} message={historyMessage} />
+
           {saveMessage && <p className="save-message">{saveMessage}</p>}
 
           <button className="window-update-button" type="button" onClick={handleUpdate}>
@@ -1423,11 +1681,48 @@ function EditRoomWindow({ room, onClose }) {
             amountDue={formData[`${paymentAction.paymentKey}Amount`]}
             onFullyPaid={() => handleFullyPaid(paymentAction.paymentKey)}
             onPartialPayment={(amount) => handlePartialPayment(paymentAction.paymentKey, amount)}
+            onRemovePaid={() => handleRemovePaid(paymentAction.paymentKey)}
             onClose={() => setPaymentAction(null)}
           />
         )}
       </section>
     </div>
+  );
+}
+
+function PaymentHistoryLog({ history, message }) {
+  return (
+    <section className="payment-history" aria-label="Payment history log">
+      <div className="payment-history__head">
+        <span>Payment History</span>
+        <span>{history.length} recent</span>
+      </div>
+
+      {message && <p className="payment-history__message">{message}</p>}
+
+      {!message && history.length === 0 && (
+        <p className="payment-history__message">No payment changes logged yet.</p>
+      )}
+
+      {history.length > 0 && (
+        <div className="payment-history__list">
+          {history.map((entry) => (
+            <article className="payment-history__item" key={entry.id}>
+              <div>
+                <strong>{getPaymentTypeLabel(entry.payment_type)}</strong>
+                <span>{formatHistoryDate(entry.created_at)}</span>
+              </div>
+              <p>
+                {formatMoney(normalizeAmount(entry.old_amount_paid))} / {entry.old_status}
+                {' -> '}
+                {formatMoney(normalizeAmount(entry.new_amount_paid))} / {entry.new_status}
+              </p>
+              <small>{entry.changed_by}</small>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -1483,8 +1778,18 @@ function PaymentBlock({
   );
 }
 
-function PaymentActionPanel({ payment, amountDue, onFullyPaid, onPartialPayment, onClose }) {
+function PaymentActionPanel({
+  payment,
+  amountDue,
+  onFullyPaid,
+  onPartialPayment,
+  onRemovePaid,
+  onClose,
+}) {
   const [partialAmount, setPartialAmount] = useState('');
+  const [removeConfirmation, setRemoveConfirmation] = useState('');
+  const canRemovePaid =
+    removeConfirmation.trim().toLowerCase() === removePaidConfirmation;
 
   return (
     <section className="status-popout" aria-label={`${payment.title} payment action`}>
@@ -1515,6 +1820,25 @@ function PaymentActionPanel({ payment, amountDue, onFullyPaid, onPartialPayment,
         >
           Save Partial
         </button>
+        <div className="remove-paid-box">
+          <label className="partial-payment-field">
+            <span>Remove Paid Authorization</span>
+            <input
+              type="text"
+              value={removeConfirmation}
+              placeholder={removePaidConfirmation}
+              onChange={(event) => setRemoveConfirmation(event.target.value)}
+            />
+          </label>
+          <button
+            className="status-action-button status-action-button--danger"
+            type="button"
+            disabled={!canRemovePaid}
+            onClick={onRemovePaid}
+          >
+            Remove Paid
+          </button>
+        </div>
       </div>
     </section>
   );

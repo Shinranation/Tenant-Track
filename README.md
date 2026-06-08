@@ -48,6 +48,8 @@ Create a `.env` file using `.env.example` when you are ready to connect Supabase
 2. Open the Supabase SQL Editor.
 3. Run the schema below.
 4. Add your project URL and anon key to `.env`.
+
+If the app shows `Payment history setup needed`, run `payment_history_logs.sql` in the Supabase SQL Editor.
 5. Restart the Vite dev server.
 
 ```env
@@ -138,6 +140,49 @@ CREATE TABLE public.utility_payments (
   CONSTRAINT utility_payments_pkey PRIMARY KEY (id),
   CONSTRAINT utility_payments_contract_id_fkey FOREIGN KEY (contract_id) REFERENCES public.lease_contracts(id)
 );
+
+CREATE TABLE public.monthly_notes (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  scope text NOT NULL CHECK (
+    scope = ANY (ARRAY['building'::text, 'room'::text])
+  ),
+  target_id uuid NOT NULL,
+  billing_month integer NOT NULL,
+  billing_year integer NOT NULL,
+  note text DEFAULT ''::text,
+  updated_at timestamp without time zone DEFAULT now(),
+  CONSTRAINT monthly_notes_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE public.allowed_users (
+  email text NOT NULL,
+  CONSTRAINT allowed_users_pkey PRIMARY KEY (email)
+);
+
+CREATE TABLE public.payment_history_logs (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  room_id uuid,
+  contract_id uuid,
+  payment_table text NOT NULL CHECK (
+    payment_table = ANY (ARRAY['rent_payments'::text, 'utility_payments'::text])
+  ),
+  payment_id uuid,
+  payment_type text NOT NULL CHECK (
+    payment_type = ANY (ARRAY['rent'::text, 'water'::text, 'light'::text])
+  ),
+  utility_type text,
+  billing_month integer,
+  billing_year integer,
+  old_amount_paid numeric DEFAULT 0,
+  new_amount_paid numeric DEFAULT 0,
+  old_status text,
+  new_status text,
+  changed_by text,
+  created_at timestamp without time zone DEFAULT now(),
+  CONSTRAINT payment_history_logs_pkey PRIMARY KEY (id),
+  CONSTRAINT payment_history_logs_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.rooms(id),
+  CONSTRAINT payment_history_logs_contract_id_fkey FOREIGN KEY (contract_id) REFERENCES public.lease_contracts(id)
+);
 ```
 
 ### Development Policies
@@ -151,6 +196,9 @@ ALTER TABLE public.tenants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.lease_contracts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rent_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.utility_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.monthly_notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.allowed_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payment_history_logs ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow anon read buildings"
 ON public.buildings FOR SELECT
@@ -180,6 +228,21 @@ USING (true);
 CREATE POLICY "Allow anon read utility payments"
 ON public.utility_payments FOR SELECT
 TO anon
+USING (true);
+
+CREATE POLICY "Allow anon read monthly notes"
+ON public.monthly_notes FOR SELECT
+TO anon, authenticated
+USING (true);
+
+CREATE POLICY "Allow anon read allowed users"
+ON public.allowed_users FOR SELECT
+TO anon, authenticated
+USING (true);
+
+CREATE POLICY "Allow anon read payment history logs"
+ON public.payment_history_logs FOR SELECT
+TO anon, authenticated
 USING (true);
 ```
 
@@ -224,6 +287,22 @@ WITH CHECK (true);
 CREATE POLICY "Allow anon insert utility payments"
 ON public.utility_payments FOR INSERT
 TO anon
+WITH CHECK (true);
+
+CREATE POLICY "Allow anon insert monthly notes"
+ON public.monthly_notes FOR INSERT
+TO anon, authenticated
+WITH CHECK (true);
+
+CREATE POLICY "Allow anon update monthly notes"
+ON public.monthly_notes FOR UPDATE
+TO anon, authenticated
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY "Allow anon insert payment history logs"
+ON public.payment_history_logs FOR INSERT
+TO anon, authenticated
 WITH CHECK (true);
 ```
 
