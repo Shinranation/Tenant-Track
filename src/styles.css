@@ -1068,7 +1068,7 @@ h2 {
   width: min(100%, 560px);
   max-height: calc(100vh - 42px);
   overflow-y: auto;
-  padding: 38px 18px 16px;
+  padding: 48px 18px 16px;
   border: 4px solid #111111;
   border-radius: 0;
   background: #cfcfcf;
@@ -1084,7 +1084,7 @@ h2 {
 
 .edit-window__tab {
   position: absolute;
-  top: -18px;
+  top: 8px;
   left: 20px;
   min-width: 240px;
   max-width: calc(100% - 78px);
@@ -1099,7 +1099,7 @@ h2 {
     2px 2px 0 #111111,
     4px 4px 0 var(--windows-blue-shadow);
   font-size: 1rem;
-  line-height: 1;
+  line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1812,7 +1812,7 @@ footer {
   }
 
   .edit-window {
-    padding: 38px 12px 16px;
+    padding: 48px 12px 16px;
   }
 
   .edit-window__tab {
