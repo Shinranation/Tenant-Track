@@ -1288,6 +1288,11 @@ h2 {
   text-align: right;
 }
 
+.window-update-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .window-edit-toggle {
   position: absolute;
   top: 6px;
@@ -1415,6 +1420,70 @@ h2 {
 .balance-warning svg {
   flex: 0 0 auto;
   color: #7d0000;
+}
+
+.money-confirmation {
+  margin-bottom: 8px;
+  border: 2px solid #111111;
+  background: #fff4a8;
+}
+
+.money-confirmation__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 2px solid #111111;
+  color: #111111;
+  font-size: 0.8rem;
+}
+
+.money-confirmation__head span:first-child {
+  font-weight: 700;
+}
+
+.money-confirmation__body {
+  display: grid;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+.money-confirmation__list {
+  display: grid;
+  gap: 4px;
+}
+
+.money-confirmation__list p {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.money-confirmation__field {
+  display: grid;
+  gap: 4px;
+  color: #111111;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.money-confirmation__field input {
+  width: 100%;
+  min-height: 28px;
+  min-width: 0;
+  padding: 2px 6px;
+  border: 2px solid #111111;
+  border-radius: 0;
+  color: #111111;
+  background: #ffffff;
+  box-shadow:
+    inset 1px 1px 0 #ffffff,
+    inset -1px -1px 0 #8a8a8a;
+  font: inherit;
 }
 
 .payment-history {

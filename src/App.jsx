@@ -238,7 +238,16 @@ const emptyPortfolioRecords = {
   rentPayments: [],
   utilityPayments: [],
 };
-const removePaidConfirmation = 'yes im sure';
+const moneyChangeConfirmation = 'yes I am sure';
+const moneyFields = [
+  ['Rent Amount', 'rentAmount'],
+  ['Rent Paid', 'rentPaid'],
+  ['Water Amount', 'waterAmount'],
+  ['Water Paid', 'waterPaid'],
+  ['Lights Amount', 'lightAmount'],
+  ['Lights Paid', 'lightPaid'],
+];
+const removePaidConfirmation = moneyChangeConfirmation;
 const paymentHistoryTable = 'payment_history_logs';
 const paymentTypes = [
   {
@@ -348,6 +357,24 @@ function normalizeAmount(value) {
   const amount = Number(value);
 
   return Number.isFinite(amount) ? amount : 0;
+}
+
+function getMoneyChanges(room, formData) {
+  return moneyFields
+    .map(([label, key]) => {
+      const previousAmount = normalizeAmount(room[key]);
+      const nextAmount = normalizeAmount(formData[key]);
+
+      return previousAmount === nextAmount
+        ? null
+        : {
+            key,
+            label,
+            previousAmount,
+            nextAmount,
+          };
+    })
+    .filter(Boolean);
 }
 
 function hasPaymentHistoryChange(room, formData, paymentType) {
@@ -1208,6 +1235,7 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
   const [saveMessage, setSaveMessage] = useState('');
   const [historyMessage, setHistoryMessage] = useState('');
   const [paymentHistory, setPaymentHistory] = useState([]);
+  const [moneyConfirmation, setMoneyConfirmation] = useState('');
   const [paymentAction, setPaymentAction] = useState(null);
   const [isDetailsEditing, setIsDetailsEditing] = useState(false);
   const [editablePayments, setEditablePayments] = useState({
@@ -1234,6 +1262,10 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
     lightDueDate: room.lightDueDate ?? '',
   });
   const missingUtilityAmounts = getMissingUtilityAmounts(formData);
+  const moneyChanges = getMoneyChanges(room, formData);
+  const hasMoneyChanges = moneyChanges.length > 0;
+  const hasMoneyConfirmation =
+    moneyConfirmation.trim().toLowerCase() === moneyChangeConfirmation.toLowerCase();
 
   useEffect(() => {
     let isMounted = true;
@@ -1326,6 +1358,11 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
 
   async function handleUpdate() {
     if (!supabase) {
+      return;
+    }
+
+    if (hasMoneyChanges && !hasMoneyConfirmation) {
+      setSaveMessage(`Type "${moneyChangeConfirmation}" to confirm money changes.`);
       return;
     }
 
@@ -1666,11 +1703,24 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
             <DetailLine label="Paid" name="paid" value={getTotalPaid(formData)} isEditing={false} />
           </fieldset>
 
+          {hasMoneyChanges && (
+            <MoneyChangeConfirmation
+              changes={moneyChanges}
+              confirmation={moneyConfirmation}
+              onConfirmationChange={setMoneyConfirmation}
+            />
+          )}
+
           <PaymentHistoryLog history={paymentHistory} message={historyMessage} />
 
           {saveMessage && <p className="save-message">{saveMessage}</p>}
 
-          <button className="window-update-button" type="button" onClick={handleUpdate}>
+          <button
+            className="window-update-button"
+            type="button"
+            disabled={hasMoneyChanges && !hasMoneyConfirmation}
+            onClick={handleUpdate}
+          >
             Update
           </button>
         </form>
@@ -1687,6 +1737,38 @@ function EditRoomWindow({ room, onClose, onSaved, userEmail }) {
         )}
       </section>
     </div>
+  );
+}
+
+function MoneyChangeConfirmation({ changes, confirmation, onConfirmationChange }) {
+  return (
+    <section className="money-confirmation" aria-label="Money change confirmation">
+      <div className="money-confirmation__head">
+        <span>Money Change Confirmation</span>
+        <span>{changes.length} change{changes.length === 1 ? '' : 's'}</span>
+      </div>
+      <div className="money-confirmation__body">
+        <div className="money-confirmation__list">
+          {changes.map((change) => (
+            <p key={change.key}>
+              <strong>{change.label}</strong>
+              <span>
+                {formatMoney(change.previousAmount)} {'->'} {formatMoney(change.nextAmount)}
+              </span>
+            </p>
+          ))}
+        </div>
+        <label className="money-confirmation__field">
+          <span>Type {moneyChangeConfirmation}</span>
+          <input
+            type="text"
+            value={confirmation}
+            placeholder={moneyChangeConfirmation}
+            onChange={(event) => onConfirmationChange(event.target.value)}
+          />
+        </label>
+      </div>
+    </section>
   );
 }
 
