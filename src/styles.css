@@ -451,6 +451,40 @@ h2 {
   height: 13px;
 }
 
+.room-unit-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.room-status-indicator {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 1px solid #111111;
+  border-radius: 999px;
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.55),
+    1px 1px 0 rgba(0, 0, 0, 0.35);
+  flex: 0 0 auto;
+}
+
+.room-status-indicator--available {
+  background: #eeeeee;
+}
+
+.room-status-indicator--occupied {
+  background: #333333;
+}
+
+.room-status-indicator--unavailable {
+  background:
+    linear-gradient(45deg, transparent 43%, #111111 45%, #111111 55%, transparent 57%),
+    #eeeeee;
+}
+
 .status-dot {
   display: inline-block;
   width: 16px;
@@ -1123,7 +1157,8 @@ h2 {
   text-align: center;
 }
 
-.detail-line input {
+.detail-line input,
+.detail-line select {
   width: 100%;
   min-width: 0;
   padding: 2px 4px;
@@ -1134,7 +1169,13 @@ h2 {
   line-height: 1;
 }
 
-.detail-line--editing input {
+.detail-line select:disabled {
+  appearance: none;
+  opacity: 1;
+}
+
+.detail-line--editing input,
+.detail-line--editing select {
   background: #ffffff;
   box-shadow:
     inset 1px 1px 0 #ffffff,
@@ -1150,7 +1191,8 @@ h2 {
   cursor: default;
 }
 
-.detail-line input:focus {
+.detail-line input:focus,
+.detail-line select:focus {
   outline: 1px dotted #111111;
   outline-offset: 2px;
 }

@@ -14,16 +14,26 @@ const statusLabels = {
   vacant: 'Vacant',
 };
 
+const roomStatusLabels = {
+  available: 'Available',
+  occupied: 'Occupied',
+  unavailable: 'Unavailable',
+};
+
 function getRoomDisplayOrder(room) {
   const paymentStatuses = Object.values(room.payments ?? {});
   const hasActivePayments = paymentStatuses.some((status) => status !== 'vacant');
 
-  if (room.status === 'occupied' || room.tenant || room.contractId || hasActivePayments) {
+  if (room.status === 'occupied') {
     return 0;
   }
 
   if (room.status === 'unavailable') {
     return 2;
+  }
+
+  if (room.tenant || room.contractId || hasActivePayments) {
+    return 0;
   }
 
   return 1;
@@ -45,6 +55,16 @@ function StatusDot({ status, label }) {
       className={`status-dot status-${status}`}
       aria-label={`${label}: ${statusLabels[status]}`}
       title={`${label}: ${statusLabels[status]}`}
+    />
+  );
+}
+
+function RoomStatusIndicator({ status }) {
+  return (
+    <span
+      className={`room-status-indicator room-status-indicator--${status}`}
+      aria-label={`Room status: ${roomStatusLabels[status] ?? status}`}
+      title={`Room status: ${roomStatusLabels[status] ?? status}`}
     />
   );
 }
@@ -77,7 +97,10 @@ function BuildingCard({ hasRoomNote, property, onEditRoom }) {
                 </span>
               )}
             </span>
-            <span role="cell">{room.number}</span>
+            <span className="room-unit-cell" role="cell">
+              <RoomStatusIndicator status={room.status} />
+              <span>{room.number}</span>
+            </span>
             {Object.entries(room.payments).map(([key, status]) => (
               <span role="cell" key={key}>
                 <StatusDot status={status} label={paymentLabels[key]} />

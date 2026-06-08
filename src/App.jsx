@@ -95,12 +95,16 @@ function getRoomDisplayOrder(room) {
   const paymentStatuses = Object.values(room.payments ?? {});
   const hasActivePayments = paymentStatuses.some((status) => status !== 'vacant');
 
-  if (room.status === 'occupied' || room.tenant || room.contractId || hasActivePayments) {
+  if (room.status === 'occupied') {
     return 0;
   }
 
   if (room.status === 'unavailable') {
     return 2;
+  }
+
+  if (room.tenant || room.contractId || hasActivePayments) {
+    return 0;
   }
 
   return 1;
@@ -1018,6 +1022,20 @@ function DetailLine({ label, name, value, isEditing, onChange, type = 'text' }) 
   );
 }
 
+function StatusSelectLine({ value, isEditing, onChange }) {
+  return (
+    <label className={`detail-line${isEditing ? ' detail-line--editing' : ''}`}>
+      <span>Status</span>
+      <span className="detail-arrow">&gt;</span>
+      <select name="roomStatus" value={value} disabled={!isEditing} onChange={onChange}>
+        <option value="available">Available</option>
+        <option value="occupied">Occupied</option>
+        <option value="unavailable">Unavailable</option>
+      </select>
+    </label>
+  );
+}
+
 function EditRoomWindow({ room, onClose }) {
   const [saveMessage, setSaveMessage] = useState('');
   const [paymentAction, setPaymentAction] = useState(null);
@@ -1029,6 +1047,7 @@ function EditRoomWindow({ room, onClose }) {
   });
   const [formData, setFormData] = useState({
     tenant: room.tenant ?? '',
+    roomStatus: room.status ?? 'available',
     movedIn: room.movedIn ?? '',
     contractEnds: room.contractEnds ?? '',
     rentAmount: room.rentAmount ?? '',
@@ -1047,9 +1066,17 @@ function EditRoomWindow({ room, onClose }) {
   const missingUtilityAmounts = getMissingUtilityAmounts(formData);
 
   function handleChange(event) {
+    const { name, value } = event.target;
+
     setFormData((current) => ({
       ...current,
-      [event.target.name]: event.target.value,
+      [name]: value,
+      ...(name === 'tenant' && value.trim() && current.roomStatus === 'available'
+        ? { roomStatus: 'occupied' }
+        : {}),
+      ...(name === 'tenant' && !value.trim() && current.roomStatus === 'occupied'
+        ? { roomStatus: 'available' }
+        : {}),
     }));
   }
 
@@ -1085,31 +1112,90 @@ function EditRoomWindow({ room, onClose }) {
 
     setSaveMessage('Saving...');
 
-    const requests = [
-      supabase
-        .from('rooms')
-        .update({ monthly_rent: formData.rentAmount || null })
-        .eq('id', room.id),
-    ];
+    const tenantName = formData.tenant.trim();
+    let activeTenantId = room.tenantId;
+    let activeContractId = room.contractId;
 
-    if (room.tenantId && formData.tenant) {
-      requests.push(
-        supabase.from('tenants').update({ full_name: formData.tenant }).eq('id', room.tenantId),
-      );
+    if (activeTenantId && tenantName) {
+      const tenantUpdate = await supabase
+        .from('tenants')
+        .update({ full_name: tenantName })
+        .eq('id', activeTenantId);
+
+      if (tenantUpdate.error) {
+        setSaveMessage(tenantUpdate.error.message);
+        return;
+      }
+    } else if (!activeTenantId && tenantName) {
+      const tenantInsert = await supabase
+        .from('tenants')
+        .insert({ full_name: tenantName })
+        .select('id')
+        .single();
+
+      if (tenantInsert.error) {
+        setSaveMessage(tenantInsert.error.message);
+        return;
+      }
+
+      activeTenantId = tenantInsert.data.id;
     }
 
-    if (room.contractId) {
-      requests.push(
-        supabase
-          .from('lease_contracts')
-          .update({
-            start_date: formData.movedIn || null,
-            end_date: formData.contractEnds || null,
-            due_day: getDayFromDate(formData.rentDueDate) || null,
-          })
-          .eq('id', room.contractId),
-      );
+    if (activeContractId) {
+      const contractUpdate = await supabase
+        .from('lease_contracts')
+        .update({
+          start_date: formData.movedIn || null,
+          end_date: formData.contractEnds || null,
+          due_day: getDayFromDate(formData.rentDueDate) || null,
+          status: tenantName ? 'active' : 'ended',
+        })
+        .eq('id', activeContractId);
+
+      if (contractUpdate.error) {
+        setSaveMessage(contractUpdate.error.message);
+        return;
+      }
+
+      if (!tenantName) {
+        activeContractId = null;
+      }
+    } else if (activeTenantId) {
+      const contractInsert = await supabase
+        .from('lease_contracts')
+        .insert({
+          tenant_id: activeTenantId,
+          room_id: room.id,
+          start_date: formData.movedIn || null,
+          end_date: formData.contractEnds || null,
+          due_day: getDayFromDate(formData.rentDueDate) || null,
+          status: 'active',
+        })
+        .select('id')
+        .single();
+
+      if (contractInsert.error) {
+        setSaveMessage(contractInsert.error.message);
+        return;
+      }
+
+      activeContractId = contractInsert.data.id;
     }
+
+    const roomUpdate = await supabase
+      .from('rooms')
+      .update({
+        monthly_rent: formData.rentAmount || null,
+        status: formData.roomStatus,
+      })
+      .eq('id', room.id);
+
+    if (roomUpdate.error) {
+      setSaveMessage(roomUpdate.error.message);
+      return;
+    }
+
+    const requests = [];
 
     if (room.rentPaymentId) {
       requests.push(
@@ -1123,10 +1209,10 @@ function EditRoomWindow({ room, onClose }) {
           })
           .eq('id', room.rentPaymentId),
       );
-    } else if (room.contractId && (formData.rentAmount || formData.rentDueDate)) {
+    } else if (activeContractId && (formData.rentAmount || formData.rentDueDate)) {
       requests.push(
         supabase.from('rent_payments').insert({
-          contract_id: room.contractId,
+          contract_id: activeContractId,
           billing_month: room.billingMonth,
           billing_year: room.billingYear,
           amount_due: formData.rentAmount || null,
@@ -1149,10 +1235,10 @@ function EditRoomWindow({ room, onClose }) {
           })
           .eq('id', room.waterPaymentId),
       );
-    } else if (room.contractId && (formData.waterAmount || formData.waterDueDate)) {
+    } else if (activeContractId && (formData.waterAmount || formData.waterDueDate)) {
       requests.push(
         supabase.from('utility_payments').insert({
-          contract_id: room.contractId,
+          contract_id: activeContractId,
           utility_type: 'water',
           billing_month: room.billingMonth,
           billing_year: room.billingYear,
@@ -1176,10 +1262,10 @@ function EditRoomWindow({ room, onClose }) {
           })
           .eq('id', room.lightPaymentId),
       );
-    } else if (room.contractId && (formData.lightAmount || formData.lightDueDate)) {
+    } else if (activeContractId && (formData.lightAmount || formData.lightDueDate)) {
       requests.push(
         supabase.from('utility_payments').insert({
-          contract_id: room.contractId,
+          contract_id: activeContractId,
           utility_type: 'electricity',
           billing_month: room.billingMonth,
           billing_year: room.billingYear,
@@ -1222,6 +1308,11 @@ function EditRoomWindow({ room, onClose }) {
                   label="Tenant"
                   name="tenant"
                   value={formData.tenant}
+                  isEditing={isDetailsEditing}
+                  onChange={handleChange}
+                />
+                <StatusSelectLine
+                  value={formData.roomStatus}
                   isEditing={isDetailsEditing}
                   onChange={handleChange}
                 />
