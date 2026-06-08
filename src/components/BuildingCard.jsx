@@ -21,18 +21,19 @@ const roomStatusLabels = {
 };
 
 function getRoomDisplayOrder(room) {
-  const paymentStatuses = Object.values(room.payments ?? {});
-  const hasActivePayments = paymentStatuses.some((status) => status !== 'vacant');
-
   if (room.status === 'occupied') {
     return 0;
+  }
+
+  if (room.status === 'available') {
+    return 1;
   }
 
   if (room.status === 'unavailable') {
     return 2;
   }
 
-  if (room.tenant || room.contractId || hasActivePayments) {
+  if (room.tenant || room.contractId) {
     return 0;
   }
 

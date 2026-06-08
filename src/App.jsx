@@ -92,19 +92,28 @@ function getPaymentStatus(activeContract, payments, utilityType) {
   return filteredPayments[0]?.status ?? 'upcoming';
 }
 
-function getRoomDisplayOrder(room) {
-  const paymentStatuses = Object.values(room.payments ?? {});
-  const hasActivePayments = paymentStatuses.some((status) => status !== 'vacant');
+function getRoomDisplayPaymentStatus(roomStatus, activeContract, payments, utilityType) {
+  if (roomStatus !== 'occupied') {
+    return 'vacant';
+  }
 
+  return getPaymentStatus(activeContract, payments, utilityType);
+}
+
+function getRoomDisplayOrder(room) {
   if (room.status === 'occupied') {
     return 0;
+  }
+
+  if (room.status === 'available') {
+    return 1;
   }
 
   if (room.status === 'unavailable') {
     return 2;
   }
 
-  if (room.tenant || room.contractId || hasActivePayments) {
+  if (room.tenant || room.contractId) {
     return 0;
   }
 
@@ -205,9 +214,21 @@ function buildProperties({
           lightDueDate: getRecurringDueDate(lightPayments, billingPeriod),
           status: room.status,
           payments: {
-            rent: getPaymentStatus(activeContract, latestRentPayment ? [latestRentPayment] : []),
-            light: getPaymentStatus(activeContract, latestLightPayment ? [latestLightPayment] : []),
-            water: getPaymentStatus(activeContract, latestWaterPayment ? [latestWaterPayment] : []),
+            rent: getRoomDisplayPaymentStatus(
+              room.status,
+              activeContract,
+              latestRentPayment ? [latestRentPayment] : [],
+            ),
+            light: getRoomDisplayPaymentStatus(
+              room.status,
+              activeContract,
+              latestLightPayment ? [latestLightPayment] : [],
+            ),
+            water: getRoomDisplayPaymentStatus(
+              room.status,
+              activeContract,
+              latestWaterPayment ? [latestWaterPayment] : [],
+            ),
           },
         };
       })
@@ -248,6 +269,11 @@ const moneyFields = [
   ['Lights Amount', 'lightAmount'],
   ['Lights Paid', 'lightPaid'],
 ];
+const amountFieldPaymentKeys = {
+  rentAmount: 'rent',
+  waterAmount: 'water',
+  lightAmount: 'light',
+};
 const resetPaidConfirmation = moneyChangeConfirmation;
 const purgePaymentConfirmation = 'purge payment';
 const paymentHistoryTable = 'payment_history_logs';
@@ -1494,10 +1520,17 @@ function EditRoomWindow({ room, onClose, onSaved, onUpdateNotice, userEmail }) {
 
   function handleChange(event) {
     const { name, value } = event.target;
+    const paymentKey = amountFieldPaymentKeys[name];
 
     setFormData((current) => ({
       ...current,
       [name]: value,
+      ...(paymentKey && !hasRequiredPaymentAmount(value)
+        ? {
+            [`${paymentKey}Paid`]: 0,
+            [`${paymentKey}Status`]: 'upcoming',
+          }
+        : {}),
       ...(name === 'tenant' && value.trim() && current.roomStatus === 'available'
         ? { roomStatus: 'occupied' }
         : {}),
@@ -1505,6 +1538,17 @@ function EditRoomWindow({ room, onClose, onSaved, onUpdateNotice, userEmail }) {
         ? { roomStatus: 'available' }
         : {}),
     }));
+
+    if (paymentKey && !hasRequiredPaymentAmount(value)) {
+      setPaymentAction((current) => (current?.paymentKey === paymentKey ? null : current));
+    }
+
+    if (
+      (name === 'roomStatus' && value !== 'occupied') ||
+      (name === 'tenant' && !value.trim() && formData.roomStatus === 'occupied')
+    ) {
+      setPaymentAction(null);
+    }
   }
 
   function togglePaymentEdit(paymentKey) {
@@ -1891,9 +1935,9 @@ function EditRoomWindow({ room, onClose, onSaved, onUpdateNotice, userEmail }) {
               amountLabel="Rent Amount"
               amountName="rentAmount"
               amountValue={formData.rentAmount}
+              canEditStatus={formData.roomStatus === 'occupied'}
               dueName="rentDueDate"
               dueValue={formData.rentDueDate}
-              hasSavedPayment={Boolean(room.rentPaymentId)}
               isEditing={editablePayments.rent}
               onChange={handleChange}
               onStatusClick={setPaymentAction}
@@ -1906,9 +1950,9 @@ function EditRoomWindow({ room, onClose, onSaved, onUpdateNotice, userEmail }) {
               amountLabel="Water Amount"
               amountName="waterAmount"
               amountValue={formData.waterAmount}
+              canEditStatus={formData.roomStatus === 'occupied'}
               dueName="waterDueDate"
               dueValue={formData.waterDueDate}
-              hasSavedPayment={Boolean(room.waterPaymentId)}
               isEditing={editablePayments.water}
               onChange={handleChange}
               onStatusClick={setPaymentAction}
@@ -1921,9 +1965,9 @@ function EditRoomWindow({ room, onClose, onSaved, onUpdateNotice, userEmail }) {
               amountLabel="Lights Amount"
               amountName="lightAmount"
               amountValue={formData.lightAmount}
+              canEditStatus={formData.roomStatus === 'occupied'}
               dueName="lightDueDate"
               dueValue={formData.lightDueDate}
-              hasSavedPayment={Boolean(room.lightPaymentId)}
               isEditing={editablePayments.light}
               onChange={handleChange}
               onStatusClick={setPaymentAction}
@@ -2060,18 +2104,19 @@ function PaymentBlock({
   amountLabel,
   amountName,
   amountValue,
+  canEditStatus,
   dueName,
   dueValue,
-  hasSavedPayment,
   isEditing,
   onChange,
   onStatusClick,
   onToggleEdit,
 }) {
-  const canOpenStatusAction = hasRequiredPaymentAmount(amountValue) || hasSavedPayment;
+  const hasRequiredAmount = hasRequiredPaymentAmount(amountValue);
+  const canOpenStatusAction = canEditStatus && hasRequiredAmount;
   const statusTitle = canOpenStatusAction
     ? `${title}: ${status}`
-    : `${title}: set amount before updating status`;
+    : `${title}: ${canEditStatus ? 'set amount before updating status' : 'room must be occupied to update status'}`;
 
   return (
     <section className={`payment-block${isEditing ? ' payment-block--editing' : ''}`}>
