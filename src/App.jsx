@@ -790,6 +790,7 @@ function App() {
     <main className="app-shell">
       <header className="top-bar">
         <div className="brand-strip">
+          <h1>TEST 999</h1>
           <h1>TenantTrack</h1>
           <button
             className="page-switch-button"
