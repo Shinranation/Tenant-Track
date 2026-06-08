@@ -749,11 +749,17 @@ h2 {
   width: 94px;
 }
 
+.summary-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
 .summary-print-button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin-left: auto;
 }
 
 .receipt-sheet {
@@ -1780,7 +1786,7 @@ footer {
     padding: 24px 16px 36px;
   }
 
-  .summary-print-button {
+  .summary-actions {
     margin-left: 0;
   }
 
@@ -1846,10 +1852,20 @@ footer {
 }
 
 @media print {
+  @page {
+    margin: 0.45in;
+  }
+
   :root,
   body,
   .app-shell {
     background: #ffffff;
+  }
+
+  body {
+    color: #111111;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 
   .top-bar,
@@ -1865,10 +1881,20 @@ footer {
   }
 
   .receipt-sheet {
+    width: 100%;
     padding: 0;
     border: 0;
     box-shadow: none;
     background: #ffffff;
+  }
+
+  .receipt-table-wrap {
+    overflow: visible;
+  }
+
+  .receipt-header {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   .receipt-table {

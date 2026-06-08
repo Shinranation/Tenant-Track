@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronDown,
   DoorOpen,
+  FileDown,
   Printer,
   X,
 } from 'lucide-react';
@@ -337,6 +338,15 @@ function formatMoney(amount) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount);
+}
+
+function getReceiptExportTitle(billingPeriod, summaryPeriod) {
+  const periodSlug =
+    summaryPeriod === 'year'
+      ? billingPeriod.year
+      : `${billingPeriod.year}-${String(billingPeriod.month).padStart(2, '0')}`;
+
+  return `TenantTrack Receipt ${periodSlug}`;
 }
 
 function formatHistoryDate(value) {
@@ -762,6 +772,27 @@ function App() {
     }));
   }
 
+  function handleReceiptPdfExport() {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const previousTitle = document.title;
+    const restoreTitle = () => {
+      document.title = previousTitle;
+      window.removeEventListener('afterprint', restoreTitle);
+    };
+
+    document.title = getReceiptExportTitle(billingPeriod, summaryPeriod);
+    window.addEventListener('afterprint', restoreTitle, { once: true });
+    window.print();
+    window.setTimeout(restoreTitle, 750);
+  }
+
+  function handleReceiptPrint() {
+    window.print();
+  }
+
   if (isAuthLoading) {
     return (
       <main className="app-shell">
@@ -884,7 +915,8 @@ function App() {
           rows={summaryRows}
           summaryPeriod={summaryPeriod}
           onBillingPeriodChange={setBillingPeriod}
-          onPrint={() => window.print()}
+          onExportPdf={handleReceiptPdfExport}
+          onPrint={handleReceiptPrint}
           onSummaryPeriodChange={setSummaryPeriod}
         />
       )}
@@ -1051,6 +1083,7 @@ function SummaryPage({
   rows,
   summaryPeriod,
   onBillingPeriodChange,
+  onExportPdf,
   onPrint,
   onSummaryPeriodChange,
 }) {
@@ -1114,10 +1147,26 @@ function SummaryPage({
           }
         />
 
-        <button className="summary-print-button" type="button" onClick={onPrint}>
-          <Printer size={16} />
-          Print
-        </button>
+        <div className="summary-actions">
+          <button
+            className="summary-print-button"
+            type="button"
+            aria-label="Print receipt"
+            onClick={onPrint}
+          >
+            <Printer size={16} />
+            Print
+          </button>
+          <button
+            className="summary-print-button"
+            type="button"
+            aria-label="Export receipt as PDF"
+            onClick={onExportPdf}
+          >
+            <FileDown size={16} />
+            Export PDF
+          </button>
+        </div>
       </div>
 
       <article className="receipt-sheet">
