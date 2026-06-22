@@ -7,10 +7,10 @@ import {
 import { formatMoney } from '../../functions/formatters.js';
 import {
   isValidPartialAmount,
-  matchesConfirmation,
   normalizeAmount,
   parsePaymentAmount,
-} from '../../functions/payments.js';
+} from '../../functions/paymentAmounts.js';
+import { matchesConfirmation } from '../../functions/paymentStatus.js';
 
 function PaymentActionPanel({
   payment,

@@ -1,8 +1,8 @@
 import { formatHistoryDate, formatMoney } from '../../functions/formatters.js';
 import {
   getPaymentTypeLabel,
-  normalizeAmount,
-} from '../../functions/payments.js';
+} from '../../functions/paymentHistory.js';
+import { normalizeAmount } from '../../functions/paymentAmounts.js';
 
 function PaymentHistoryLog({ history, message }) {
   return (

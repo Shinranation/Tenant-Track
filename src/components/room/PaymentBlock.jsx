@@ -1,4 +1,4 @@
-import { hasRequiredPaymentAmount } from '../../functions/payments.js';
+import { hasRequiredPaymentAmount } from '../../functions/paymentAmounts.js';
 import DetailLine from './DetailLine.jsx';
 
 function PaymentBlock({

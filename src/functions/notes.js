@@ -16,6 +16,38 @@ export function getMonthlyNoteKey(scope, id, billingPeriod) {
   return `${billingPeriod.year}-${String(billingPeriod.month).padStart(2, '0')}:${scope}:${id}`;
 }
 
+export function parseMonthlyNoteKey(noteKey) {
+  const [period, scope, id] = String(noteKey).split(':');
+  const [year, month] = period.split('-').map(Number);
+
+  if (!year || !month || !scope || !id) {
+    return null;
+  }
+
+  return {
+    billingMonth: month,
+    billingYear: year,
+    scope,
+    targetId: id,
+  };
+}
+
+export function mapMonthlyNoteRowsToState(rows) {
+  return Object.fromEntries(
+    rows.map((row) => [
+      getMonthlyNoteKey(
+        row.scope,
+        row.target_id,
+        {
+          month: row.billing_month,
+          year: row.billing_year,
+        },
+      ),
+      row.note ?? '',
+    ]),
+  );
+}
+
 export function hasNoteValue(value) {
   return value != null && String(value).trim() !== '';
 }

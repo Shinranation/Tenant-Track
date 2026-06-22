@@ -7,6 +7,7 @@ function MonthlyNotesPanel({
   isOpen,
   noteCount,
   notes,
+  onNoteBlur,
   onNoteChange,
   onToggle,
   properties,
@@ -44,6 +45,12 @@ function MonthlyNotesPanel({
                       event.target.value,
                     )
                   }
+                  onBlur={(event) =>
+                    onNoteBlur?.(
+                      getMonthlyNoteKey('building', property.id, billingPeriod),
+                      event.target.value,
+                    )
+                  }
                 />
               </label>
 
@@ -56,6 +63,12 @@ function MonthlyNotesPanel({
                       placeholder="Room agreement note"
                       onChange={(event) =>
                         onNoteChange(
+                          getMonthlyNoteKey('room', room.id, billingPeriod),
+                          event.target.value,
+                        )
+                      }
+                      onBlur={(event) =>
+                        onNoteBlur?.(
                           getMonthlyNoteKey('room', room.id, billingPeriod),
                           event.target.value,
                         )

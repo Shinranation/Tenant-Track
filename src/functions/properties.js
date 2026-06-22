@@ -1,10 +1,12 @@
 import {
   getPaymentForBillingPeriod,
-  getPaymentStatus,
   getRecurringAmount,
   getRecurringDueDate,
+} from './paymentSchedule.js';
+import {
+  getPaymentStatus,
   getRoomDisplayPaymentStatus,
-} from './payments.js';
+} from './paymentStatus.js';
 import { sortRoomsForDisplay } from './rooms.js';
 
 export function buildProperties({

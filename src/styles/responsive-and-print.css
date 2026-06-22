@@ -1,0 +1,214 @@
+@media (prefers-reduced-motion: reduce) {
+  .detail-line--editing,
+  .payment-block--editing {
+    animation: none;
+    background-color: #fff4a8;
+  }
+}
+
+@media (max-width: 760px) {
+  .top-bar {
+    align-items: flex-start;
+  }
+
+  .brand-strip {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .dashboard-layout {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .month-panel {
+    position: relative;
+    top: auto;
+  }
+
+  .month-panel__buttons {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .building-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .monthly-notes {
+    margin-right: 16px;
+    margin-left: 16px;
+    padding: 0;
+    width: auto;
+  }
+
+  .monthly-notes__grid {
+    grid-template-columns: 1fr;
+    padding: 18px 12px 12px;
+  }
+
+  .monthly-notes__toggle {
+    grid-template-columns: minmax(0, 1fr) 24px;
+  }
+
+  .monthly-notes__count {
+    grid-column: 1 / -1;
+    width: fit-content;
+  }
+
+  .note-field {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .workspace-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .legend {
+    justify-content: flex-start;
+  }
+
+  .room-row {
+    grid-template-columns: 20px 0.9fr repeat(3, minmax(30px, 1fr)) 42px;
+  }
+
+  .summary-page {
+    padding: 24px 16px 36px;
+  }
+
+  .summary-actions {
+    margin-left: 0;
+  }
+
+  .receipt-sheet {
+    padding: 16px;
+  }
+
+  .receipt-header {
+    flex-direction: column;
+  }
+
+  .receipt-building__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .receipt-building__total {
+    justify-items: start;
+  }
+
+  .receipt-total-box {
+    min-width: 0;
+  }
+
+  .edit-window {
+    padding: 48px 12px 16px;
+  }
+
+  .edit-window__tab {
+    left: 14px;
+    min-width: 150px;
+    font-size: 1.25rem;
+  }
+
+  .detail-line {
+    grid-template-columns: 92px 12px minmax(0, 1fr);
+    gap: 5px;
+    font-size: 0.82rem;
+  }
+
+  .window-update-button {
+    min-width: 66px;
+    min-height: 28px;
+    margin-top: 8px;
+    font-size: 1rem;
+  }
+
+  .payment-head,
+  .payment-block,
+  .details-head,
+  .details-block {
+    grid-template-columns: 1fr 44px 36px;
+  }
+
+  .details-head,
+  .details-block {
+    grid-template-columns: 1fr 36px;
+  }
+
+  .payment-block .detail-line {
+    grid-template-columns: 92px 12px minmax(0, 1fr);
+  }
+}
+
+@media print {
+  @page {
+    margin: 0.45in;
+  }
+
+  :root,
+  body,
+  .app-shell {
+    background: #ffffff;
+  }
+
+  body {
+    color: #111111;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .top-bar,
+  .summary-controls,
+  footer {
+    display: none;
+  }
+
+  .summary-page {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  .receipt-sheet {
+    width: 100%;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: #ffffff;
+  }
+
+  .receipt-table-wrap {
+    overflow: visible;
+  }
+
+  .receipt-header {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .receipt-table {
+    font-size: 10pt;
+  }
+
+  .receipt-building {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .receipt-building__header,
+  .receipt-grand-total {
+    background: #ffffff;
+  }
+
+  .receipt-table th {
+    color: #111111;
+    background: #ffffff;
+  }
+}

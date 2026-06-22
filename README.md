@@ -10,7 +10,7 @@ The app provides a compact Windows-inspired dashboard for scanning rent, water, 
 | --- | --- |
 | Frontend | React 18 |
 | Build tool | Vite 5 |
-| Styling | Plain CSS in `src/styles.css` |
+| Styling | Plain CSS modules imported from `src/styles/index.css` |
 | Backend/database | Supabase Postgres |
 | Auth | Supabase Auth with Google OAuth |
 | Icons | `lucide-react` |
@@ -30,7 +30,7 @@ Main runtime dependencies:
 - Month selector for viewing payment status by billing period.
 - Room edit modal for tenant details, rent, utility amounts, due dates, and payment status.
 - Payment history log for changes to rent, water, and lights.
-- Monthly notes for buildings and rooms. These are currently stored in browser `localStorage`.
+- Monthly notes for buildings and rooms, backed by Supabase with browser `localStorage` as a cache fallback.
 - Income Summary Receipt view with month/year totals.
 - Print receipt and Export PDF actions.
 
@@ -65,6 +65,11 @@ TenantTrack/
       date.js
       formatters.js
       notes.js
+      paymentAmounts.js
+      paymentHistory.js
+      paymentNotices.js
+      paymentSchedule.js
+      paymentStatus.js
       payments.js
       properties.js
       rooms.js
@@ -73,17 +78,30 @@ TenantTrack/
       supabaseClient.js
     services/
       authService.js
+      contractService.js
+      monthlyNotesService.js
       paymentHistoryService.js
+      paymentWriteService.js
       portfolioService.js
       roomService.js
+      tenantService.js
     App.jsx
     main.jsx
-    styles.css
+    styles/
+      auth.css
+      base.css
+      dashboard.css
+      dialogs-and-room-editor.css
+      index.css
+      responsive-and-print.css
+      summaries-and-notes.css
   .env.example
+  monthly_notes.sql
   payment_history_logs.sql
   index.html
   package.json
   README.md
+  tests/
 ```
 
 Folder intent:
@@ -91,6 +109,7 @@ Folder intent:
 - `components/` contains React UI. Feature folders hold larger screens or workflows.
 - `functions/` contains pure business logic and formatting helpers.
 - `services/` contains Supabase reads and writes grouped by backend concern.
+- `styles/` contains ordered CSS sections imported by `styles/index.css`.
 - `constants/` contains shared labels, keys, and payment configuration.
 
 ## Requirements
@@ -154,9 +173,9 @@ INSERT INTO public.allowed_users (email)
 VALUES ('your-email@example.com');
 ```
 
-7. Run the payment history helper if needed.
+7. Run helper SQL files if needed.
 
-The repository includes `payment_history_logs.sql`. Run it in the Supabase SQL Editor if the app shows a payment history setup warning.
+The repository includes `monthly_notes.sql` and `payment_history_logs.sql`. Run them in the Supabase SQL Editor if the app shows notes or payment history setup warnings.
 
 8. Start the dev server.
 
@@ -196,6 +215,12 @@ npm run lint
 
 Runs ESLint.
 
+```bash
+npm run test
+```
+
+Runs the Node test suite for pure business logic.
+
 ## Supabase Setup Notes
 
 TenantTrack reads from and writes to these tables:
@@ -206,10 +231,11 @@ TenantTrack reads from and writes to these tables:
 - `lease_contracts`
 - `rent_payments`
 - `utility_payments`
+- `monthly_notes`
 - `allowed_users`
 - `payment_history_logs`
 
-The app currently keeps monthly notes in browser `localStorage` using the key `tenanttrack.monthlyNotes.v1`. A `monthly_notes` table is included in the schema as a future database-backed notes target, but the current UI does not read from or write to that table.
+Monthly notes are read from and written to `monthly_notes`. The app also caches notes in browser `localStorage` using the key `tenanttrack.monthlyNotes.v1` so the UI can preserve note text locally if the notes table or policies need setup.
 
 For development, the policies below are intentionally broad. Before production, replace them with policies scoped to authenticated landlord accounts.
 
@@ -314,7 +340,13 @@ CREATE TABLE public.monthly_notes (
   billing_year integer NOT NULL,
   note text DEFAULT ''::text,
   updated_at timestamp without time zone DEFAULT now(),
-  CONSTRAINT monthly_notes_pkey PRIMARY KEY (id)
+  CONSTRAINT monthly_notes_pkey PRIMARY KEY (id),
+  CONSTRAINT unique_monthly_note UNIQUE (
+    scope,
+    target_id,
+    billing_month,
+    billing_year
+  )
 );
 
 CREATE TABLE public.allowed_users (
@@ -493,6 +525,50 @@ TO anon, authenticated
 WITH CHECK (true);
 ```
 
+## Production RLS Direction
+
+For production, prefer authenticated-only policies tied to the `allowed_users` table. This keeps the frontend access gate and database access rules aligned:
+
+```sql
+CREATE OR REPLACE FUNCTION public.is_allowed_user()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.allowed_users
+    WHERE lower(email) = lower(auth.jwt() ->> 'email')
+  );
+$$;
+
+CREATE POLICY "Allowed users can read buildings"
+ON public.buildings FOR SELECT
+TO authenticated
+USING (public.is_allowed_user());
+
+CREATE POLICY "Allowed users can update rooms"
+ON public.rooms FOR UPDATE
+TO authenticated
+USING (public.is_allowed_user())
+WITH CHECK (public.is_allowed_user());
+
+CREATE POLICY "Allowed users can upsert monthly notes"
+ON public.monthly_notes FOR INSERT
+TO authenticated
+WITH CHECK (public.is_allowed_user());
+
+CREATE POLICY "Allowed users can update monthly notes"
+ON public.monthly_notes FOR UPDATE
+TO authenticated
+USING (public.is_allowed_user())
+WITH CHECK (public.is_allowed_user());
+```
+
+Apply the same `public.is_allowed_user()` pattern to the rest of the tables that TenantTrack reads or writes, and avoid granting production table access to `anon`.
+
 ## Seed Data Example
 
 Use this as a minimal smoke test after creating the schema:
@@ -519,7 +595,7 @@ The Summary page has two receipt actions:
 - `Print` opens the browser print dialog.
 - `Export PDF` opens the same print dialog with a PDF-friendly document title. Choose `Save as PDF` as the destination.
 
-The receipt print layout is controlled by the `@media print` rules in `src/styles.css`.
+The receipt print layout is controlled by the `@media print` rules in `src/styles/responsive-and-print.css`.
 
 ## Deployment Notes
 

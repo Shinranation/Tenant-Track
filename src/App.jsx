@@ -32,6 +32,10 @@ import {
 } from './functions/summary.js';
 import { supabase } from './lib/supabaseClient.js';
 import { findAllowedUserByEmail } from './services/authService.js';
+import {
+  fetchMonthlyNotesForYear,
+  saveMonthlyNote,
+} from './services/monthlyNotesService.js';
 import { fetchPortfolioRecords } from './services/portfolioService.js';
 
 function getInitialBillingPeriod() {
@@ -91,6 +95,13 @@ function App() {
         billingPeriod,
       }),
     );
+
+    const { notes } = await fetchMonthlyNotesForYear(supabase, billingPeriod.year);
+
+    setMonthlyNotes((current) => ({
+      ...current,
+      ...notes,
+    }));
     setIsLoading(false);
     return true;
   }, [accessStatus, billingPeriod, session]);
@@ -208,6 +219,14 @@ function App() {
       ...current,
       [noteKey]: value,
     }));
+  }
+
+  async function handleMonthlyNoteBlur(noteKey, value) {
+    if (!supabase || accessStatus !== 'allowed') {
+      return;
+    }
+
+    await saveMonthlyNote(supabase, noteKey, value);
   }
 
   function handleReceiptPdfExport() {
@@ -340,6 +359,7 @@ function App() {
               isOpen={isNotesOpen}
               noteCount={monthlyNoteCount}
               notes={monthlyNotes}
+              onNoteBlur={handleMonthlyNoteBlur}
               onNoteChange={handleMonthlyNoteChange}
               onToggle={() => setIsNotesOpen((current) => !current)}
               properties={properties}

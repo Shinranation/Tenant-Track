@@ -5,19 +5,25 @@ import {
   moneyChangeConfirmation,
 } from '../../constants/appConstants.js';
 import {
-  buildUpdateNotice,
   getMissingUtilityAmounts,
-  getMoneyChanges,
-  getPaymentHistoryErrorMessage,
-  getPaymentHistorySaveErrorMessage,
-  getPaymentTypeLabel,
   getTotalBalance,
   getTotalPaid,
   hasRequiredPaymentAmount,
   isValidPartialAmount,
+} from '../../functions/paymentAmounts.js';
+import {
+  getPaymentHistoryErrorMessage,
+  getPaymentHistorySaveErrorMessage,
+  getPaymentTypeLabel,
+} from '../../functions/paymentHistory.js';
+import {
+  buildUpdateNotice,
+  getMoneyChanges,
+} from '../../functions/paymentNotices.js';
+import {
   matchesConfirmation,
   normalizePaymentStatus,
-} from '../../functions/payments.js';
+} from '../../functions/paymentStatus.js';
 import { supabase } from '../../lib/supabaseClient.js';
 import { fetchPaymentHistory } from '../../services/paymentHistoryService.js';
 import { saveRoomChanges } from '../../services/roomService.js';
