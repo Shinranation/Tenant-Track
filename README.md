@@ -34,10 +34,31 @@ Main runtime dependencies:
 - Income Summary Receipt view with month/year totals.
 - Print receipt and Export PDF actions.
 
+## Screenshots
+
+Screenshots are stored in `docs/screenshots/`.
+
+![Login via Google](docs/screenshots/login.png)
+
+![Dashboard screenshot](docs/screenshots/dashboard.png)
+
+![Room editor screenshot](docs/screenshots/room-editor.png)
+
+![Income summary screenshot](docs/screenshots/income-summary.png)
+
+![Print preview screenshot](docs/screenshots/print-preview.png)
+
 ## Project Structure
 
 ```text
 TenantTrack/
+  docs/
+    screenshots/
+      dashboard.png
+      income-summary.png
+      login.png
+      print-preview.png
+      room-editor.png
   src/
     components/
       auth/
