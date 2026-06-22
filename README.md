@@ -40,11 +40,42 @@ Main runtime dependencies:
 TenantTrack/
   src/
     components/
+      auth/
+        AccessDeniedScreen.jsx
+        LoginScreen.jsx
+      notes/
+        MonthlyNotesPanel.jsx
+      room/
+        DetailLine.jsx
+        EditRoomWindow.jsx
+        MoneyChangeConfirmation.jsx
+        PaymentActionPanel.jsx
+        PaymentBlock.jsx
+        PaymentHistoryLog.jsx
+        StatusSelectLine.jsx
+      summary/
+        SummaryPage.jsx
       BuildingCard.jsx
       DashboardStats.jsx
       StatusLegend.jsx
+      UpdateNoticeDialog.jsx
+    constants/
+      appConstants.js
+    functions/
+      date.js
+      formatters.js
+      notes.js
+      payments.js
+      properties.js
+      rooms.js
+      summary.js
     lib/
       supabaseClient.js
+    services/
+      authService.js
+      paymentHistoryService.js
+      portfolioService.js
+      roomService.js
     App.jsx
     main.jsx
     styles.css
@@ -54,6 +85,13 @@ TenantTrack/
   package.json
   README.md
 ```
+
+Folder intent:
+
+- `components/` contains React UI. Feature folders hold larger screens or workflows.
+- `functions/` contains pure business logic and formatting helpers.
+- `services/` contains Supabase reads and writes grouped by backend concern.
+- `constants/` contains shared labels, keys, and payment configuration.
 
 ## Requirements
 

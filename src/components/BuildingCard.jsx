@@ -1,4 +1,5 @@
 import { Edit3, StickyNote } from 'lucide-react';
+import { sortRoomsForDisplay } from '../functions/rooms.js';
 
 const paymentLabels = {
   rent: 'Rent',
@@ -19,36 +20,6 @@ const roomStatusLabels = {
   occupied: 'Occupied',
   unavailable: 'Unavailable',
 };
-
-function getRoomDisplayOrder(room) {
-  if (room.status === 'occupied') {
-    return 0;
-  }
-
-  if (room.status === 'available') {
-    return 1;
-  }
-
-  if (room.status === 'unavailable') {
-    return 2;
-  }
-
-  if (room.tenant || room.contractId) {
-    return 0;
-  }
-
-  return 1;
-}
-
-function sortRoomsForDisplay(roomA, roomB) {
-  return (
-    getRoomDisplayOrder(roomA) - getRoomDisplayOrder(roomB) ||
-    roomA.number.localeCompare(roomB.number, undefined, {
-      numeric: true,
-      sensitivity: 'base',
-    })
-  );
-}
 
 function StatusDot({ status, label }) {
   return (
